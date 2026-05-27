@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cereri Concediu
 
-## Getting Started
+Aplicație web pentru managementul cererilor de concediu de odihnă (firmă din România).
 
-First, run the development server:
+## Fază 1 — Fundație (completă)
+
+- Next.js 16 + TypeScript strict
+- Tailwind CSS 4 + shadcn/ui
+- Prisma 6 + PostgreSQL (schema completă)
+- NextAuth.js (Credentials, JWT 7 zile)
+- Pagină login + schimbare parolă obligatorie la primul login
+- Middleware protecție rute
+- Seed administrator din variabile de mediu
+- Rate limiting autentificare (in-memory MVP / Vercel KV opțional)
+
+## Configurare locală
+
+### 1. Variabile de mediu
+
+Copiază `.env.example` în `.env.local` și completează valorile:
+
+```bash
+cp .env.example .env.local
+```
+
+Generează secrete:
+
+```bash
+openssl rand -base64 32   # NEXTAUTH_SECRET
+openssl rand -hex 32      # CRON_SECRET (fazele următoare)
+```
+
+### 2. Bază de date Supabase
+
+1. Creează un proiect Supabase.
+2. Din **Settings → Database**, copiază:
+   - **Connection string (Transaction pooler)** → `DATABASE_URL`
+   - **Connection string (Direct)** → `DIRECT_URL`
+3. Rulează migrarea:
+
+```bash
+npm run db:migrate
+```
+
+Sau aplică manual migrarea din `prisma/migrations/`.
+
+### 3. Seed administrator
+
+```bash
+npm run db:seed
+```
+
+Creează userul `ADMIN_USERNAME` dacă nu există, cu `mustChangePassword: true`.
+
+### 4. Pornire aplicație
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Deschide [http://localhost:3000](http://localhost:3000) → redirect la `/login`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Credențiale implicite (din `.env.example`):**
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Utilizator: `admin`
+- Parolă: valoarea din `ADMIN_PASSWORD`
+- La primul login: schimbare parolă obligatorie → apoi panou `/admin`
 
-## Learn More
+## Scripturi utile
 
-To learn more about Next.js, take a look at the following resources:
+| Comandă | Descriere |
+|---------|-----------|
+| `npm run dev` | Server dezvoltare |
+| `npm run build` | Build producție |
+| `npm run db:migrate` | Migrări Prisma |
+| `npm run db:seed` | Seed admin |
+| `npm run db:studio` | Prisma Studio |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Structură autentificare
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Rută | Acces |
+|------|-------|
+| `/login` | Public |
+| `/schimba-parola` | Autentificat (parolă obligatorie) |
+| `/dashboard`, `/cereri/*`, `/profil` | Angajat + Admin |
+| `/admin/*` | Doar Admin |
+| `/api/admin/*` | Doar Admin |
 
-## Deploy on Vercel
+## Următorul pas
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Faza 2 — Admin Core:** CRUD puncte de lucru, utilizatori, constrângeri.

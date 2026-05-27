@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum LeaveStatus {
+  APPROVED_AUTO
+  PENDING_ADMIN
+  APPROVED_ADMIN
+  REJECTED
+  CANCELLED
+}
+
+enum ConstraintScope {
+  GLOBAL
+  WORK_POINT
+}
+
+enum ConstraintType {
+  MAX_CONCURRENT_PERCENT
+  MIN_NOTICE_DAYS
+  BLACKOUT_MONTH
+  MAX_CONSECUTIVE_DAYS
+  MIN_ONE_VACATION_OF_N_DAYS
+}
+
+model User {
+  id                 String     @id @default(cuid())
+  username           String     @unique
+  passwordHash       String
+  email              String     @unique
+  firstName          String
+  lastName           String
+  jobTitle           String
+  employer           String
+  role               Role       @default(EMPLOYEE)
+  workPointId        String?
+  workPoint          WorkPoint? @relation(fields: [workPointId], references: [id])
+  hireDate           DateTime   @db.Date
+  initialLeaveDays   Float      @default(0)
+  availableDays      Float      @default(0)
+  mustChangePassword Boolean    @default(false)
+  active             Boolean    @default(true)
+  deletedAt          DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  leaveRequests  LeaveRequest[]
+  accruals       LeaveAccrual[]
+  passwordResets PasswordReset[]
+  auditLogs      AuditLog[]
+
+  @@index([workPointId, active])
+  @@index([role, active])
+}
+
+model WorkPoint {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  users       User[]
+  constraints Constraint[]
+}
+
+model Constraint {
+  id          String          @id @default(cuid())
+  scope       ConstraintScope
+  type        ConstraintType
+  workPointId String?
+  workPoint   WorkPoint?      @relation(fields: [workPointId], references: [id])
+  config      Json
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+
+  @@index([scope, active])
+  @@index([workPointId, active])
+}
+
+model LeaveRequest {
+  id               String      @id @default(cuid())
+  userId           String
+  user             User        @relation(fields: [userId], references: [id])
+  startDate        DateTime    @db.Date
+  endDate          DateTime    @db.Date
+  workingDays      Int
+  status           LeaveStatus
+  violationReasons String[]
+  rejectionReason  String?
+  pdfUrl           String?
+  approvedById     String?
+  approvedAt       DateTime?
+  emailSentAt      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@index([startDate, endDate])
+}
+
+model LeaveAccrual {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  month     Int
+  year      Int
+  days      Float
+  createdAt DateTime @default(now())
+
+  @@unique([userId, month, year])
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([token, used])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}
