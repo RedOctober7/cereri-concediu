@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 
 export default async function AdminLayout({
@@ -25,8 +26,19 @@ export default async function AdminLayout({
     <div className="min-h-full flex flex-col md:flex-row">
       <aside className="border-b md:border-b-0 md:border-r md:w-56 bg-card p-4">
         <p className="font-semibold text-sm mb-2">Administrare</p>
-        <nav className="text-sm text-muted-foreground space-y-1">
-          <p className="text-foreground font-medium">Dashboard</p>
+        <nav className="text-sm space-y-1">
+          <Link href="/admin" className="block text-foreground font-medium">
+            Dashboard
+          </Link>
+          <Link href="/admin/puncte-lucru" className="block text-muted-foreground">
+            Puncte de lucru
+          </Link>
+          <Link href="/admin/utilizatori" className="block text-muted-foreground">
+            Utilizatori
+          </Link>
+          <Link href="/admin/reguli" className="block text-muted-foreground">
+            Reguli
+          </Link>
         </nav>
       </aside>
       <main className="flex-1 p-4 md:p-6">{children}</main>
