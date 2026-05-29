@@ -92,6 +92,10 @@ export default withAuth(
           return !!token;
         }
 
+        if (pathname.startsWith("/api/leaves")) {
+          return !!token;
+        }
+
         return true;
       },
     },
@@ -110,5 +114,6 @@ export const config = {
     "/admin/:path*",
     "/api/admin/:path*",
     "/api/profile/:path*",
+    "/api/leaves/:path*",
   ],
 };

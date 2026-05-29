@@ -144,16 +144,30 @@ export const constraintCreateSchema = z
     }
   });
 
-  export const constraintUpdateSchema = z.object({
-    scope: z.enum(['GLOBAL', 'WORK_POINT']).optional(),
-    type: z.enum([
-      'MAX_CONCURRENT_PERCENT',
-      'MIN_NOTICE_DAYS', 
-      'BLACKOUT_MONTH',
-      'MAX_CONSECUTIVE_DAYS',
-      'MIN_ONE_VACATION_OF_N_DAYS'
-    ]).optional(),
-    workPointId: z.string().optional().nullable(),
-    config: z.record(z.string(), z.unknown()).optional(),
-    active: z.boolean().optional(),
-  });
+export const constraintUpdateSchema = z.object({
+  scope: z.enum(["GLOBAL", "WORK_POINT"]).optional(),
+  type: z
+    .enum([
+      "MAX_CONCURRENT_PERCENT",
+      "MIN_NOTICE_DAYS",
+      "BLACKOUT_MONTH",
+      "MAX_CONSECUTIVE_DAYS",
+      "MIN_ONE_VACATION_OF_N_DAYS",
+    ])
+    .optional(),
+  workPointId: z.string().optional().nullable(),
+  config: z.record(z.string(), z.unknown()).optional(),
+  active: z.boolean().optional(),
+});
+
+export const leaveCreateSchema = z.object({
+  startDate: z.coerce.date({ error: "Data de început este invalidă" }),
+  endDate: z.coerce.date({ error: "Data de sfârșit este invalidă" }),
+});
+
+export const leaveValidateQuerySchema = z.object({
+  startDate: z.coerce.date({ error: "Data de început este invalidă" }),
+  endDate: z.coerce.date({ error: "Data de sfârșit este invalidă" }),
+});
+
+export type LeaveCreateInput = z.infer<typeof leaveCreateSchema>;

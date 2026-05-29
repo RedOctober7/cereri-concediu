@@ -1,6 +1,8 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { EmployeeShell } from "@/components/layout/EmployeeShell";
 
 export default async function EmployeeLayout({
   children,
@@ -17,14 +19,20 @@ export default async function EmployeeLayout({
     redirect("/schimba-parola");
   }
 
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { email: true, firstName: true, lastName: true },
+  });
+
+  const userName =
+    user != null
+      ? `${user.firstName} ${user.lastName}`
+      : (session.user.name ?? "Utilizator");
+  const userEmail = user?.email ?? session.user.email ?? "";
+
   return (
-    <div className="min-h-full flex flex-col">
-      <header className="border-b bg-card px-4 py-3">
-        <p className="text-sm font-medium">
-          {process.env.APP_NAME ?? "Cereri Concediu"}
-        </p>
-      </header>
-      <main className="flex-1 p-4 md:p-6">{children}</main>
-    </div>
+    <EmployeeShell userName={userName} userEmail={userEmail}>
+      {children}
+    </EmployeeShell>
   );
 }
