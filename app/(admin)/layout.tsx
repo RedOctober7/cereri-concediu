@@ -39,6 +39,9 @@ export default async function AdminLayout({
           <Link href="/admin/reguli" className="block text-muted-foreground">
             Reguli
           </Link>
+          <Link href="/admin/cereri" className="block text-muted-foreground">
+            Cereri
+          </Link>
         </nav>
       </aside>
       <main className="flex-1 p-4 md:p-6">{children}</main>
