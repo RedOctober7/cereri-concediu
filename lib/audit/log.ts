@@ -16,7 +16,8 @@ export async function createAuditLog(input: AuditInput) {
       action: input.action,
       entityType: input.entityType,
       entityId: input.entityId,
-      details: input.details,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      details: input.details as any,
       ipAddress: input.ipAddress,
     },
   });

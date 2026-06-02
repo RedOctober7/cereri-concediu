@@ -21,7 +21,8 @@ interface GeneratePDFInput {
 }
 
 export async function generateLeavePDF(input: GeneratePDFInput): Promise<Buffer> {
-  const element = createElement(CerereConcediuPDF, input);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const element = createElement(CerereConcediuPDF, input) as any;
   const buffer = await renderToBuffer(element);
   return Buffer.from(buffer);
 }

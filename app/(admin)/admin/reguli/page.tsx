@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { ConstraintsAdmin } from "@/components/admin/ConstraintsAdmin";
 
 export default async function ConstraintsPage() {
-  const [constraints, workPoints] = await Promise.all([
+  const [constraintsRaw, workPoints] = await Promise.all([
     prisma.constraint.findMany({
       include: {
         workPoint: {
@@ -17,6 +17,11 @@ export default async function ConstraintsPage() {
       select: { id: true, name: true },
     }),
   ]);
+
+  const constraints = constraintsRaw.map((c) => ({
+    ...c,
+    config: (c.config ?? {}) as Record<string, unknown>,
+  }));
 
   return (
     <div className="space-y-6">

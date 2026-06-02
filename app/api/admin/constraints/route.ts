@@ -53,7 +53,8 @@ export async function POST(request: Request) {
         scope: parsed.data.scope,
         type: parsed.data.type,
         workPointId: parsed.data.workPointId || null,
-        config: parsed.data.config,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        config: parsed.data.config as any,
         active: parsed.data.active ?? true,
       },
     });

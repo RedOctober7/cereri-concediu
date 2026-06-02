@@ -32,17 +32,19 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
+    const updateData: Record<string, unknown> = {};
+    if (parsed.data.scope) updateData.scope = parsed.data.scope;
+    if (parsed.data.type) updateData.type = parsed.data.type;
+    if (parsed.data.workPointId !== undefined) {
+      updateData.workPointId = parsed.data.workPointId ?? null;
+    }
+    if (parsed.data.config) updateData.config = parsed.data.config;
+    if (parsed.data.active !== undefined) updateData.active = parsed.data.active;
+
     const updated = await prisma.constraint.update({
       where: { id },
-      data: {
-        ...(parsed.data.scope ? { scope: parsed.data.scope } : {}),
-        ...(parsed.data.type ? { type: parsed.data.type } : {}),
-        ...(parsed.data.workPointId !== undefined
-          ? { workPointId: parsed.data.workPointId || null }
-          : {}),
-        ...(parsed.data.config ? { config: parsed.data.config } : {}),
-        ...(parsed.data.active !== undefined ? { active: parsed.data.active } : {}),
-      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: updateData as any,
     });
 
     await createAuditLog({

@@ -5,8 +5,9 @@ import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
 import { userCreateSchema } from "@/lib/validators";
 import { createAuditLog } from "@/lib/audit/log";
-import { sendEmail } from "@/lib/emails/send";
 import { WelcomeEmail } from "@/lib/emails/WelcomeEmail";
+import { Resend } from "resend";
+import { render } from "@react-email/render";
 
 export async function GET(request: Request) {
   try {
@@ -124,15 +125,22 @@ export async function POST(request: Request) {
       },
     });
 
-    await sendEmail({
-      to: user.email,
-      subject: "Cont nou creat - Cereri Concediu",
-      react: WelcomeEmail({
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const html = await render(WelcomeEmail({
         fullName: `${user.firstName} ${user.lastName}`,
         username: user.username,
         password: parsed.data.password,
-      }),
-    });
+      }));
+      await resend.emails.send({
+        from: process.env.EMAIL_FROM || 'noreply@example.ro',
+        to: user.email,
+        subject: 'Cont nou creat - Cereri Concediu',
+        html,
+      });
+    } catch (emailError) {
+      console.error('[Users] Eroare email:', emailError);
+    }
 
     return NextResponse.json({ data: user }, { status: 201 });
   } catch (error) {
