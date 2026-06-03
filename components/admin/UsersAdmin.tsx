@@ -202,7 +202,10 @@ export function UsersAdmin({
                 key={user.id}
                 className="flex flex-col gap-3 rounded-md border p-3 md:flex-row md:items-center md:justify-between"
               >
-                <div>
+                <div
+                  className="cursor-pointer hover:text-blue-600"
+                  onClick={() => router.push(`/admin/utilizatori/${user.id}`)}
+                >
                   <p className="font-medium">
                     {user.lastName} {user.firstName}
                   </p>
