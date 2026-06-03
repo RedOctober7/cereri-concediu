@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
+  // Vercel trimite Authorization: Bearer {secret}
+  const authHeader = req.headers.get('authorization');
   const cronSecret = req.headers.get('x-cron-secret');
-  if (cronSecret !== process.env.CRON_SECRET) {
+  
+  const validVercel = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  const validManual = cronSecret === process.env.CRON_SECRET;
+  
+  if (!validVercel && !validManual) {
     return NextResponse.json({ error: 'Neautorizat' }, { status: 401 });
   }
 
   const now = new Date();
   const lastYear = now.getFullYear() - 1;
 
-  // Găsește toți userii activi
   const users = await prisma.user.findMany({
     where: {
       active: true,
@@ -36,13 +41,8 @@ export async function GET(req: NextRequest) {
   let processed = 0;
 
   for (const user of users) {
-    // Zile acumulate anul trecut
     const totalAccrued = user.accruals.reduce((sum, a) => sum + a.days, 0);
-    
-    // Zile folosite anul trecut
     const totalUsed = user.leaveRequests.reduce((sum, r) => sum + r.workingDays, 0);
-    
-    // Zile neutilizate din anul trecut care expiră
     const unused = Math.max(0, totalAccrued - totalUsed);
 
     if (unused > 0) {

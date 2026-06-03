@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
+  // Vercel trimite Authorization: Bearer {secret}
+  const authHeader = req.headers.get('authorization');
   const cronSecret = req.headers.get('x-cron-secret');
-  if (cronSecret !== process.env.CRON_SECRET) {
+  
+  const validVercel = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  const validManual = cronSecret === process.env.CRON_SECRET;
+  
+  if (!validVercel && !validManual) {
     return NextResponse.json({ error: 'Neautorizat' }, { status: 401 });
   }
 
