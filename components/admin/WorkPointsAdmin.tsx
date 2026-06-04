@@ -44,4 +44,4 @@ export function WorkPointsAdmin({ initialWorkPoints }: { initialWorkPoints: Work
       setAddress("");
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "A apărut o
+      toast.error(error instanceof Error ? error.message : "A aparut o eroare.");
