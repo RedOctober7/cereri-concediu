@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
@@ -37,11 +38,7 @@ const navItems = [
   { href: "/profil", label: "Profil", icon: User },
 ];
 
-function NavLinks({
-  onNavigate,
-}: {
-  onNavigate?: () => void;
-}) {
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
@@ -56,10 +53,10 @@ function NavLinks({
             href={item.href}
             onClick={onNavigate}
             className={cn(
-              "flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+              "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
               active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                ? "bg-primary text-primary-foreground font-medium"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
             )}
           >
             <Icon className="size-4 shrink-0" />
@@ -89,56 +86,77 @@ export function EmployeeShell({
     .toUpperCase();
 
   return (
-    <div className="flex min-h-full flex-col md:flex-row">
-      <aside className="hidden w-60 shrink-0 border-r bg-card md:flex md:flex-col">
-        <div className="border-b p-4">
-          <p className="font-semibold text-sm">
-            {process.env.NEXT_PUBLIC_APP_NAME ?? "Cereri Concediu"}
-          </p>
+    <div className="flex min-h-screen flex-col md:flex-row">
+      {/* Sidebar desktop */}
+      <aside className="hidden md:flex md:w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground">
+        <div className="p-5 border-b border-sidebar-border flex items-center gap-3">
+          <Image src="/logo.svg" alt="Logo" width={40} height={40} />
+          <div>
+            <p className="font-bold text-sm text-sidebar-foreground">Cereri Concediu</p>
+            <p className="text-xs text-sidebar-foreground/60">Viomed Farm</p>
+          </div>
         </div>
-        <div className="flex-1 p-3">
+        <div className="flex-1 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/40 mb-3 px-2">
+            Meniu
+          </p>
           <NavLinks />
+        </div>
+        <div className="p-4 border-t border-sidebar-border">
+          <div className="flex items-center gap-3">
+            <Avatar className="size-8">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-sidebar-foreground truncate">{userName}</p>
+              <p className="text-xs text-sidebar-foreground/50 truncate">{userEmail}</p>
+            </div>
+          </div>
         </div>
       </aside>
 
-      <div className="flex min-h-full flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b bg-card px-4">
-          <div className="flex items-center gap-2 md:hidden">
+      <div className="flex min-h-screen flex-1 flex-col">
+        {/* Header mobile */}
+        <header className="flex h-14 items-center justify-between border-b bg-sidebar px-4 md:hidden">
+          <div className="flex items-center gap-3">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger
                 render={
-                  <Button variant="outline" size="icon" aria-label="Meniu">
-                    <Menu className="size-4" />
+                  <Button variant="ghost" size="icon" aria-label="Meniu" className="text-sidebar-foreground">
+                    <Menu className="size-5" />
                   </Button>
                 }
               />
-              <SheetContent side="left" className="w-72">
+              <SheetContent side="left" className="w-72 bg-sidebar text-sidebar-foreground">
                 <SheetHeader>
-                  <SheetTitle>Meniu</SheetTitle>
+                  <SheetTitle className="flex items-center gap-3 text-sidebar-foreground">
+                    <Image src="/logo.svg" alt="Logo" width={32} height={32} />
+                    Cereri Concediu
+                  </SheetTitle>
                 </SheetHeader>
                 <div className="mt-4">
                   <NavLinks onNavigate={() => setMobileOpen(false)} />
                 </div>
               </SheetContent>
             </Sheet>
-            <span className="text-sm font-medium">Cereri Concediu</span>
+            <span className="text-sm font-bold text-sidebar-foreground">Cereri Concediu</span>
           </div>
-          <div className="hidden md:block" />
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button variant="ghost" className="gap-2 px-2">
+                <Button variant="ghost" className="gap-2 px-2 text-sidebar-foreground">
                   <Avatar className="size-8">
-                    <AvatarFallback>{initials}</AvatarFallback>
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                      {initials}
+                    </AvatarFallback>
                   </Avatar>
-                  <span className="hidden text-sm sm:inline">{userName}</span>
                 </Button>
               }
             />
             <DropdownMenuContent align="end" className="w-56">
-              <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                {userEmail}
-              </div>
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">{userEmail}</div>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 render={<Link href="/profil" className="flex items-center gap-2" />}
@@ -157,7 +175,8 @@ export function EmployeeShell({
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+
+        <main className="flex-1 p-4 md:p-6 bg-background">{children}</main>
       </div>
     </div>
   );
