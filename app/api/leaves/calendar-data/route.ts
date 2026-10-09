@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     const ownLeaves = await prisma.leaveRequest.findMany({
       where: {
         userId: auth.session.user.id,
-        status: { not: LeaveStatus.REJECTED },
+        status: { notIn: [LeaveStatus.REJECTED, LeaveStatus.CANCELLED] },
       },
       select: {
         id: true,
