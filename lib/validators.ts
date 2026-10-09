@@ -33,7 +33,9 @@ export const workPointCreateSchema = z.object({
   address: z.string().trim().max(500, "Adresa este prea lungă").optional(),
 });
 
-export const workPointUpdateSchema = workPointCreateSchema.extend({
+// PATCH parțial: activarea/dezactivarea trimite doar { active }; numele și
+// adresa sunt validate doar dacă sunt trimise.
+export const workPointUpdateSchema = workPointCreateSchema.partial().extend({
   active: z.boolean().optional(),
 });
 
