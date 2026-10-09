@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { LeaveStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { addYearsUTC, todayInBucharest } from "@/lib/dates";
 import { requireSession } from "@/lib/api-session";
 import { leaveCreateSchema } from "@/lib/validators";
 import {
@@ -9,7 +8,6 @@ import {
   hasOverlappingOwnLeave,
   validateLeaveRequest,
 } from "@/lib/constraints/validate";
-import { calculateWorkingDays } from "@/lib/holidays";
 import { createAuditLog } from "@/lib/audit/log";
 
 export async function GET() {
@@ -54,38 +52,8 @@ export async function POST(request: Request) {
 
     const start = parsed.data.startDate;
     const end = parsed.data.endDate;
-    const today = todayInBucharest();
-    const maxDate = addYearsUTC(today, 1);
 
-    if (start > end) {
-      return NextResponse.json(
-        { error: "Data de început trebuie să fie înainte de data de sfârșit." },
-        { status: 400 }
-      );
-    }
-
-    if (start < today) {
-      return NextResponse.json(
-        { error: "Perioada selectată trebuie să fie în viitor." },
-        { status: 400 }
-      );
-    }
-
-    if (end > maxDate) {
-      return NextResponse.json(
-        { error: "Perioada nu poate depăși un an de la data curentă." },
-        { status: 400 }
-      );
-    }
-
-    const workingDays = calculateWorkingDays(start, end);
-    if (workingDays < 1) {
-      return NextResponse.json(
-        { error: "Selectează cel puțin o zi lucrătoare." },
-        { status: 400 }
-      );
-    }
-
+    // Aceleași reguli ca la previzualizare (GET /api/leaves/validate).
     const validation = await validateLeaveRequest(
       auth.session.user.id,
       start,

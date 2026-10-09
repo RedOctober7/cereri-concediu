@@ -5,7 +5,7 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { startOfDayUTC, todayInBucharest } from "@/lib/dates";
+import { addYearsUTC, startOfDayUTC, todayInBucharest } from "@/lib/dates";
 import {
   calculateWorkingDays,
   intervalIntersectsMonth,
@@ -104,6 +104,19 @@ async function countActiveUsersAtWorkPoint(workPointId: string) {
   });
 }
 
+function blocked(blockingError: string, workingDays: number): ValidationResult {
+  return {
+    needsAdminApproval: true,
+    violations: [],
+    workingDays,
+    blockingError,
+  };
+}
+
+/**
+ * Folosită atât de previzualizare (GET /api/leaves/validate), cât și la creare
+ * (POST /api/leaves), ca ambele să aplice aceleași reguli.
+ */
 export async function validateLeaveRequest(
   userId: string,
   startDate: Date,
@@ -113,6 +126,22 @@ export async function validateLeaveRequest(
   const start = startOfDayUTC(startDate);
   const end = startOfDayUTC(endDate);
   const workingDays = calculateWorkingDays(start, end);
+  const today = todayInBucharest();
+
+  if (start < today) {
+    return blocked("Perioada selectată trebuie să fie în viitor.", workingDays);
+  }
+
+  if (end > addYearsUTC(today, 1)) {
+    return blocked(
+      "Perioada nu poate depăși un an de la data curentă.",
+      workingDays
+    );
+  }
+
+  if (workingDays < 1) {
+    return blocked("Selectează cel puțin o zi lucrătoare.", workingDays);
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -120,21 +149,11 @@ export async function validateLeaveRequest(
   });
 
   if (!user || !user.active || user.deletedAt) {
-    return {
-      needsAdminApproval: true,
-      violations: ["Contul utilizatorului nu este valid."],
-      workingDays,
-      blockingError: null,
-    };
+    return blocked("Contul utilizatorului nu este valid.", workingDays);
   }
 
   if (await hasOverlappingOwnLeave(userId, start, end)) {
-    return {
-      needsAdminApproval: true,
-      violations: [],
-      workingDays,
-      blockingError: OVERLAPPING_LEAVE_MESSAGE,
-    };
+    return blocked(OVERLAPPING_LEAVE_MESSAGE, workingDays);
   }
 
   if (workingDays > user.availableDays) {
@@ -150,7 +169,7 @@ export async function validateLeaveRequest(
 
     switch (constraint.type) {
       case ConstraintType.MIN_NOTICE_DAYS: {
-        const minDate = addWorkingDays(todayInBucharest(), config.days);
+        const minDate = addWorkingDays(today, config.days);
         if (start < minDate) {
           violations.push(
             `Preaviz minim ${config.days} zile lucrătoare (cererea trebuia depusă cu cel puțin ${config.days} zile înainte)`
