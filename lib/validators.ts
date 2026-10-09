@@ -70,7 +70,22 @@ export const userUpdateSchema = userCreateSchema.partial().extend({
   forcePasswordReset: z.boolean().optional(),
 });
 
-const constraintConfigSchema = z.union([
+// Valorile ajung în bucle zi cu zi (ex. addWorkingDays pentru preaviz), deci
+// le limităm la un an.
+const MAX_CONSTRAINT_DAYS = 366;
+
+function constraintDaysSchema() {
+  return z
+    .number({ error: "Numărul de zile trebuie să fie număr" })
+    .int("Numărul de zile trebuie să fie întreg")
+    .min(1, "Numărul minim de zile este 1")
+    .max(
+      MAX_CONSTRAINT_DAYS,
+      `Numărul maxim de zile este ${MAX_CONSTRAINT_DAYS}`
+    );
+}
+
+const constraintConfigSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal(ConstraintType.MAX_CONCURRENT_PERCENT),
     config: z.object({
@@ -83,9 +98,7 @@ const constraintConfigSchema = z.union([
   z.object({
     type: z.literal(ConstraintType.MIN_NOTICE_DAYS),
     config: z.object({
-      days: z
-        .number({ error: "Numărul de zile trebuie să fie număr" })
-        .min(1, "Numărul minim de zile este 1"),
+      days: constraintDaysSchema(),
     }),
   }),
   z.object({
@@ -93,6 +106,7 @@ const constraintConfigSchema = z.union([
     config: z.object({
       month: z
         .number({ error: "Luna trebuie să fie număr" })
+        .int("Luna trebuie să fie un număr întreg")
         .min(1, "Luna minimă este 1")
         .max(12, "Luna maximă este 12"),
     }),
@@ -100,20 +114,30 @@ const constraintConfigSchema = z.union([
   z.object({
     type: z.literal(ConstraintType.MAX_CONSECUTIVE_DAYS),
     config: z.object({
-      days: z
-        .number({ error: "Numărul de zile trebuie să fie număr" })
-        .min(1, "Numărul minim de zile este 1"),
+      days: constraintDaysSchema(),
     }),
   }),
   z.object({
     type: z.literal(ConstraintType.MIN_ONE_VACATION_OF_N_DAYS),
     config: z.object({
-      days: z
-        .number({ error: "Numărul de zile trebuie să fie număr" })
-        .min(1, "Numărul minim de zile este 1"),
+      days: constraintDaysSchema(),
     }),
   }),
 ]);
+
+/** Primul mesaj de eroare pentru config-ul unei reguli de tipul dat, sau null. */
+export function constraintConfigError(
+  type: ConstraintType,
+  config: unknown
+): string | null {
+  const parsed = constraintConfigSchema.safeParse({ type, config });
+  if (parsed.success) {
+    return null;
+  }
+  return (
+    parsed.error.issues[0]?.message ?? "Configurația regulii este invalidă."
+  );
+}
 
 export const constraintCreateSchema = z
   .object({
@@ -124,16 +148,11 @@ export const constraintCreateSchema = z
     config: z.record(z.string(), z.unknown()),
   })
   .superRefine((data, ctx) => {
-    const parsed = constraintConfigSchema.safeParse({
-      type: data.type,
-      config: data.config,
-    });
-
-    if (!parsed.success) {
-      const firstIssue = parsed.error.issues[0];
+    const configError = constraintConfigError(data.type, data.config);
+    if (configError) {
       ctx.addIssue({
         code: "custom",
-        message: firstIssue?.message ?? "Configurația regulii este invalidă.",
+        message: configError,
         path: ["config"],
       });
     }
@@ -147,21 +166,37 @@ export const constraintCreateSchema = z
     }
   });
 
-export const constraintUpdateSchema = z.object({
-  scope: z.enum(["GLOBAL", "WORK_POINT"]).optional(),
-  type: z
-    .enum([
-      "MAX_CONCURRENT_PERCENT",
-      "MIN_NOTICE_DAYS",
-      "BLACKOUT_MONTH",
-      "MAX_CONSECUTIVE_DAYS",
-      "MIN_ONE_VACATION_OF_N_DAYS",
-    ])
-    .optional(),
-  workPointId: z.string().optional().nullable(),
-  config: z.record(z.string(), z.unknown()).optional(),
-  active: z.boolean().optional(),
-});
+// Când payload-ul are doar `config` (sau doar `type`), ruta PATCH validează
+// perechea împreună cu valoarea existentă a regulii.
+export const constraintUpdateSchema = z
+  .object({
+    scope: z.enum(["GLOBAL", "WORK_POINT"]).optional(),
+    type: z
+      .enum([
+        "MAX_CONCURRENT_PERCENT",
+        "MIN_NOTICE_DAYS",
+        "BLACKOUT_MONTH",
+        "MAX_CONSECUTIVE_DAYS",
+        "MIN_ONE_VACATION_OF_N_DAYS",
+      ])
+      .optional(),
+    workPointId: z.string().optional().nullable(),
+    config: z.record(z.string(), z.unknown()).optional(),
+    active: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === undefined || data.config === undefined) {
+      return;
+    }
+    const configError = constraintConfigError(data.type, data.config);
+    if (configError) {
+      ctx.addIssue({
+        code: "custom",
+        message: configError,
+        path: ["config"],
+      });
+    }
+  });
 
 /** Dată calendaristică 'yyyy-MM-dd' → Date la miezul nopții UTC (lib/dates.ts). */
 function leaveDateSchema(message: string) {
@@ -184,8 +219,8 @@ const LEAVE_MAX_FUTURE_YEARS = 2;
 
 const leaveRangeSchema = z
   .object({
-    startDate: leaveDateSchema("Data de început este invalidă"),
-    endDate: leaveDateSchema("Data de sfârșit este invalidă"),
+    startDate: leaveDateSchema("Data de început este invalidă."),
+    endDate: leaveDateSchema("Data de sfârșit este invalidă."),
   })
   .superRefine(({ startDate, endDate }, ctx) => {
     if (!(startDate instanceof Date) || !(endDate instanceof Date)) {
@@ -195,7 +230,7 @@ const leaveRangeSchema = z
     if (startDate > endDate) {
       ctx.addIssue({
         code: "custom",
-        message: "Data de început trebuie să fie înainte de data de sfârșit.",
+        message: "Data de sfârșit nu poate fi înaintea datei de început.",
         path: ["endDate"],
       });
       return;

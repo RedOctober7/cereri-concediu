@@ -14,7 +14,7 @@ export const APP_TIME_ZONE = "Europe/Bucharest";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ISO_TIMESTAMP_RE =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+  /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 
 /** Ziua (an, lună 0-11, zi) la miezul nopții UTC; depășirile se normalizează. */
 export function utcDate(year: number, monthIndex: number, day: number): Date {
@@ -53,7 +53,29 @@ export function parseDateInput(value: string): Date | null {
   if (dateOnly) {
     return dateOnly;
   }
-  if (!ISO_TIMESTAMP_RE.test(trimmed)) {
+  const match = ISO_TIMESTAMP_RE.exec(trimmed);
+  if (!match) {
+    return null;
+  }
+  // Date() normalizează depășirile ('2026-02-30T10:00:00Z' devine 2 martie),
+  // așa că validăm strict ziua și ora înainte de conversie.
+  const [
+    ,
+    datePart,
+    hours,
+    minutes,
+    seconds = "00",
+    offsetHours = "00",
+    offsetMinutes = "00",
+  ] = match;
+  if (
+    !parseDateOnly(datePart) ||
+    Number(hours) > 23 ||
+    Number(minutes) > 59 ||
+    Number(seconds) > 59 ||
+    Number(offsetHours) > 23 ||
+    Number(offsetMinutes) > 59
+  ) {
     return null;
   }
   const instant = new Date(trimmed);

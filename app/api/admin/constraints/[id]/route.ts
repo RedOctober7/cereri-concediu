@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
-import { constraintUpdateSchema } from "@/lib/validators";
+import {
+  constraintConfigError,
+  constraintUpdateSchema,
+} from "@/lib/validators";
 import { createAuditLog } from "@/lib/audit/log";
 
 type RouteContext = {
@@ -30,6 +33,18 @@ export async function PATCH(request: Request, context: RouteContext) {
         { error: "Regula nu a fost găsită." },
         { status: 404 }
       );
+    }
+
+    if (parsed.data.type !== undefined || parsed.data.config !== undefined) {
+      // Payload-ul poate avea doar tipul sau doar config-ul: validăm perechea
+      // care va fi salvată, completată cu valorile existente ale regulii.
+      const configError = constraintConfigError(
+        parsed.data.type ?? existing.type,
+        parsed.data.config ?? existing.config
+      );
+      if (configError) {
+        return NextResponse.json({ error: configError }, { status: 400 });
+      }
     }
 
     const updateData: Record<string, unknown> = {};

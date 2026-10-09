@@ -26,6 +26,18 @@ type ValidationPreview = {
   availableDays: number;
 };
 
+type PreviewError = {
+  message: string;
+  /**
+   * 400 de la /api/leaves/validate: POST aplică aceleași reguli și ar respinge
+   * cererea. Alte erori (401, 500, rețea) nu spun nimic despre perioadă.
+   */
+  blocksSubmit: boolean;
+};
+
+const PREVIEW_FAILED_MESSAGE =
+  "Nu s-a putut verifica perioada. Reîncearcă în câteva momente.";
+
 export function LeaveRequestForm({
   initialAvailableDays,
 }: {
@@ -35,11 +47,19 @@ export function LeaveRequestForm({
   const [year, setYear] = useState(new Date().getFullYear());
   const [range, setRange] = useState<DateRange | undefined>();
   const [preview, setPreview] = useState<ValidationPreview | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<PreviewError | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const hasCompleteRange = Boolean(range?.from && range?.to);
+
+  function onRangeSelect(next: DateRange | undefined) {
+    setRange(next);
+    // Rezultatul anterior era pentru altă perioadă; nu-l mai afișăm cât timp
+    // se verifică perioada nouă.
+    setPreview(null);
+    setPreviewError(null);
+  }
 
   useEffect(() => {
     if (!range?.from || !range?.to) {
@@ -61,17 +81,32 @@ export function LeaveRequestForm({
           data?: ValidationPreview;
           error?: string;
         };
+        if (controller.signal.aborted) {
+          return;
+        }
         if (res.ok && body.data) {
           setPreview(body.data);
           setPreviewError(null);
+        } else if (res.status === 400) {
+          setPreview(null);
+          setPreviewError({
+            message: body.error ?? "Perioada selectată nu este validă.",
+            blocksSubmit: true,
+          });
         } else {
           setPreview(null);
-          setPreviewError(body.error ?? "Nu s-a putut verifica perioada.");
+          setPreviewError({
+            message: PREVIEW_FAILED_MESSAGE,
+            blocksSubmit: false,
+          });
         }
       } catch {
         if (!controller.signal.aborted) {
           setPreview(null);
-          setPreviewError(null);
+          setPreviewError({
+            message: PREVIEW_FAILED_MESSAGE,
+            blocksSubmit: false,
+          });
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -83,6 +118,8 @@ export function LeaveRequestForm({
     return () => {
       clearTimeout(timeout);
       controller.abort();
+      // Cererea anulată nu mai ajunge în finally cu setLoadingPreview(false).
+      setLoadingPreview(false);
     };
   }, [range?.from, range?.to]);
 
@@ -130,7 +167,7 @@ export function LeaveRequestForm({
         <CardContent>
           <LeaveCalendar
             selected={range}
-            onSelect={setRange}
+            onSelect={onRangeSelect}
             year={year}
             onYearChange={setYear}
           />
@@ -170,10 +207,16 @@ export function LeaveRequestForm({
             ) : null}
 
             {hasCompleteRange && previewError ? (
-              <Alert variant="destructive">
+              <Alert
+                variant={previewError.blocksSubmit ? "destructive" : "default"}
+              >
                 <AlertCircle className="size-4" />
-                <AlertTitle>Cererea nu poate fi trimisă</AlertTitle>
-                <AlertDescription>{previewError}</AlertDescription>
+                <AlertTitle>
+                  {previewError.blocksSubmit
+                    ? "Cererea nu poate fi trimisă"
+                    : "Verificarea nu este disponibilă"}
+                </AlertTitle>
+                <AlertDescription>{previewError.message}</AlertDescription>
               </Alert>
             ) : null}
 
@@ -215,7 +258,12 @@ export function LeaveRequestForm({
 
         <Button
           className="h-12 w-full text-base"
-          disabled={!range?.from || !range?.to || submitting || loadingPreview}
+          disabled={
+            !hasCompleteRange ||
+            submitting ||
+            loadingPreview ||
+            previewError?.blocksSubmit === true
+          }
           onClick={() => void onSubmit()}
         >
           {submitting ? (
