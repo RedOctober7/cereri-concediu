@@ -9,6 +9,8 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+const NOT_PENDING_MESSAGE = "Doar cererile în așteptare pot fi anulate.";
+
 export async function POST(_request: Request, context: RouteContext) {
   try {
     const auth = await requireSession();
@@ -31,10 +33,7 @@ export async function POST(_request: Request, context: RouteContext) {
     }
 
     if (leave.status !== LeaveStatus.PENDING_ADMIN) {
-      return NextResponse.json(
-        { error: "Doar cererile în așteptare pot fi anulate." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: NOT_PENDING_MESSAGE }, { status: 400 });
     }
 
     if (startOfDayUTC(leave.startDate) <= today) {
@@ -44,9 +43,23 @@ export async function POST(_request: Request, context: RouteContext) {
       );
     }
 
-    const updated = await prisma.leaveRequest.update({
-      where: { id },
+    // Condiționat de status: dacă adminul a aprobat sau a respins între timp,
+    // anularea nu mai suprascrie decizia (zilele aprobate rămân scăzute corect).
+    const { count } = await prisma.leaveRequest.updateMany({
+      where: {
+        id,
+        userId: auth.session.user.id,
+        status: LeaveStatus.PENDING_ADMIN,
+      },
       data: { status: LeaveStatus.CANCELLED },
+    });
+
+    if (count !== 1) {
+      return NextResponse.json({ error: NOT_PENDING_MESSAGE }, { status: 400 });
+    }
+
+    const updated = await prisma.leaveRequest.findUniqueOrThrow({
+      where: { id },
     });
 
     await createAuditLog({

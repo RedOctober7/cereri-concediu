@@ -6,6 +6,9 @@ import { generateLeavePDF } from '@/lib/pdf/generate';
 import { uploadPDF } from '@/lib/supabase-storage';
 import { sendLeaveApprovedEmail } from '@/lib/emails/send';
 import { createAuditLog } from '@/lib/audit/log';
+import { calculateWorkingDays } from '@/lib/holidays';
+
+const NOT_PENDING_MESSAGE = 'Cererea nu mai este în așteptare.';
 
 export async function POST(
   req: NextRequest,
@@ -32,33 +35,80 @@ export async function POST(
     }
 
     if (leaveRequest.status !== 'PENDING_ADMIN') {
-      return NextResponse.json(
-        { error: 'Cererea nu este în așteptare' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: NOT_PENDING_MESSAGE }, { status: 400 });
     }
 
-    const updatedRequest = await prisma.$transaction(async (tx) => {
-      const updated = await tx.leaveRequest.update({
-        where: { id },
-        data: {
-          status: 'APPROVED_ADMIN',
-          approvedById: session.user.id,
-          approvedAt: new Date(),
-        },
-      });
+    const { updatedRequest, storedWorkingDays } = await prisma.$transaction(
+      async (tx) => {
+        // Ca la crearea cererii: blochează rândul angajatului până la commit, ca
+        // aprobările (și cererile noi) aceluiași angajat să se serializeze.
+        await tx.$queryRaw`
+          SELECT id FROM "User" WHERE id = ${leaveRequest.userId} FOR UPDATE
+        `;
 
-      await tx.user.update({
-        where: { id: leaveRequest.userId },
-        data: {
-          availableDays: {
-            decrement: leaveRequest.workingDays,
+        const current = await tx.leaveRequest.findUnique({
+          where: { id },
+          select: {
+            status: true,
+            startDate: true,
+            endDate: true,
+            workingDays: true,
           },
-        },
-      });
+        });
+        if (!current || current.status !== 'PENDING_ADMIN') {
+          throw new Error('LEAVE_NOT_PENDING');
+        }
 
-      return updated;
-    });
+        // Valoarea salvată poate fi veche (ex. 6–7 ianuarie au devenit sărbători).
+        const workingDays = calculateWorkingDays(current.startDate, current.endDate);
+        if (workingDays < 1) {
+          throw new Error('NO_WORKING_DAYS');
+        }
+
+        const overlapping = await tx.leaveRequest.findFirst({
+          where: {
+            userId: leaveRequest.userId,
+            id: { not: id },
+            status: { in: ['APPROVED_AUTO', 'APPROVED_ADMIN'] },
+            startDate: { lte: current.endDate },
+            endDate: { gte: current.startDate },
+          },
+          select: { id: true },
+        });
+        if (overlapping) {
+          throw new Error('OVERLAPPING_APPROVED_LEAVE');
+        }
+
+        // Condiționat de status: o aprobare/respingere/anulare simultană câștigă
+        // o singură dată, iar zilele nu se scad de două ori.
+        const { count } = await tx.leaveRequest.updateMany({
+          where: { id, status: 'PENDING_ADMIN' },
+          data: {
+            status: 'APPROVED_ADMIN',
+            approvedById: session.user.id,
+            approvedAt: new Date(),
+            workingDays,
+          },
+        });
+        if (count !== 1) {
+          throw new Error('LEAVE_NOT_PENDING');
+        }
+
+        await tx.user.update({
+          where: { id: leaveRequest.userId },
+          data: {
+            availableDays: {
+              decrement: workingDays,
+            },
+          },
+        });
+
+        return {
+          updatedRequest: await tx.leaveRequest.findUniqueOrThrow({ where: { id } }),
+          storedWorkingDays: current.workingDays,
+        };
+      }
+    );
 
     const pdfBuffer = await generateLeavePDF({
       request: {
@@ -111,11 +161,34 @@ export async function POST(
       action: 'LEAVE_ADMIN_APPROVED',
       entityType: 'LeaveRequest',
       entityId: id,
-      details: { workingDays: leaveRequest.workingDays },
+      details: {
+        workingDays: updatedRequest.workingDays,
+        storedWorkingDays,
+      },
     });
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'LEAVE_NOT_PENDING') {
+        return NextResponse.json({ error: NOT_PENDING_MESSAGE }, { status: 400 });
+      }
+      if (error.message === 'NO_WORKING_DAYS') {
+        return NextResponse.json(
+          { error: 'Perioada cererii nu conține nicio zi lucrătoare.' },
+          { status: 400 }
+        );
+      }
+      if (error.message === 'OVERLAPPING_APPROVED_LEAVE') {
+        return NextResponse.json(
+          {
+            error:
+              'Angajatul are deja un concediu aprobat care se suprapune cu această perioadă.',
+          },
+          { status: 400 }
+        );
+      }
+    }
     console.error('[Approve Leave]', error);
     return NextResponse.json(
       { error: 'A apărut o eroare. Reîncearcă.' },

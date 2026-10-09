@@ -10,6 +10,8 @@ const rejectSchema = z.object({
   rejectionReason: z.string().min(10, 'Motivul trebuie să aibă minim 10 caractere'),
 });
 
+const NOT_PENDING_MESSAGE = 'Cererea nu mai este în așteptare.';
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -34,19 +36,22 @@ export async function POST(
     }
 
     if (leaveRequest.status !== 'PENDING_ADMIN') {
-      return NextResponse.json(
-        { error: 'Cererea nu este în așteptare' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: NOT_PENDING_MESSAGE }, { status: 400 });
     }
 
-    await prisma.leaveRequest.update({
-      where: { id },
+    // Condiționat de status, ca să nu suprascrie o aprobare sau o anulare
+    // făcută între timp (o singură instrucțiune UPDATE, deci atomică).
+    const { count } = await prisma.leaveRequest.updateMany({
+      where: { id, status: 'PENDING_ADMIN' },
       data: {
         status: 'REJECTED',
         rejectionReason,
       },
     });
+
+    if (count !== 1) {
+      return NextResponse.json({ error: NOT_PENDING_MESSAGE }, { status: 400 });
+    }
 
     await sendLeaveRejectedEmail({
       to: leaveRequest.user.email,
