@@ -50,8 +50,8 @@ export function LeaveRequestForm({
       setLoadingPreview(true);
       try {
         const params = new URLSearchParams({
-          startDate: range.from!.toISOString(),
-          endDate: range.to!.toISOString(),
+          startDate: format(range.from!, "yyyy-MM-dd"),
+          endDate: format(range.to!, "yyyy-MM-dd"),
         });
         const res = await fetch(`/api/leaves/validate?${params}`, {
           signal: controller.signal,
@@ -94,8 +94,8 @@ export function LeaveRequestForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          startDate: range.from.toISOString(),
-          endDate: range.to.toISOString(),
+          startDate: format(range.from, "yyyy-MM-dd"),
+          endDate: format(range.to, "yyyy-MM-dd"),
         }),
       });
       const body = (await res.json()) as { error?: string; message?: string };

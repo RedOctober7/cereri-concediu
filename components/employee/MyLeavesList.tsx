@@ -31,6 +31,7 @@ import {
   leaveStatusLabel,
   isApprovedStatus,
 } from "@/lib/leaves/status";
+import { startOfDayUTC, todayInBucharest } from "@/lib/dates";
 
 export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
   const router = useRouter();
@@ -62,11 +63,8 @@ export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
     if (leave.status !== "PENDING_ADMIN") {
       return false;
     }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const start = new Date(leave.startDate);
-    start.setHours(0, 0, 0, 0);
-    return start > today;
+    // Aceeași regulă ca serverul: zile la miezul nopții UTC, „azi” în București.
+    return startOfDayUTC(new Date(leave.startDate)) > todayInBucharest();
   }
 
   if (leaves.length === 0) {

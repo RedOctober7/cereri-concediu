@@ -1,17 +1,16 @@
 import {
-  addDays,
-  format,
-  getDay,
-  isSameDay,
-  isWithinInterval,
-  startOfDay,
-} from "date-fns";
+  addDaysUTC,
+  startOfDayUTC,
+  toDateOnlyString,
+  utcDate,
+} from "@/lib/dates";
 
-const holidayNames = new Map<string, string>();
+// Toate datele de aici sunt zile la miezul nopții UTC (vezi lib/dates.ts).
 
-function registerHoliday(date: Date, name: string) {
-  holidayNames.set(format(startOfDay(date), "yyyy-MM-dd"), name);
-}
+type HolidayEntry = { date: Date; name: string };
+
+const MAX_CACHED_YEARS = 16;
+const holidayCache = new Map<number, Map<string, HolidayEntry>>();
 
 /** Paște Ortodox (duminică) — algoritm Gauss, convertit la calendar gregorian. */
 export function getOrthodoxEasterSunday(year: number): Date {
@@ -29,12 +28,15 @@ export function getOrthodoxEasterSunday(year: number): Date {
     day = julianDay - 31;
   }
 
-  const julianEaster = new Date(year, month - 1, day);
-  return startOfDay(addDays(julianEaster, 13));
+  // Data iuliană + 13 zile = data gregoriană (valabil pentru 1900–2099).
+  return utcDate(year, month - 1, day + 13);
 }
 
-export function getRomanianHolidays(year: number): Date[] {
-  holidayNames.clear();
+function buildHolidays(year: number): Map<string, HolidayEntry> {
+  const entries = new Map<string, HolidayEntry>();
+  const register = (date: Date, name: string) => {
+    entries.set(toDateOnlyString(date), { date, name });
+  };
 
   const fixed: Array<[number, number, string]> = [
     [1, 1, "Anul Nou"],
@@ -49,41 +51,51 @@ export function getRomanianHolidays(year: number): Date[] {
     [12, 26, "A doua zi de Crăciun"],
   ];
 
-  const holidays: Date[] = fixed.map(([month, day, name]) => {
-    const date = startOfDay(new Date(year, month - 1, day));
-    registerHoliday(date, name);
-    return date;
-  });
+  for (const [month, day, name] of fixed) {
+    register(utcDate(year, month - 1, day), name);
+  }
 
   const easter = getOrthodoxEasterSunday(year);
-  const goodFriday = addDays(easter, -2);
-  const easterMonday = addDays(easter, 1);
-  const pentecostSunday = addDays(easter, 49);
-  const pentecostMonday = addDays(easter, 50);
-
   const movable: Array<[Date, string]> = [
-    [goodFriday, "Vinerea Mare"],
+    [addDaysUTC(easter, -2), "Vinerea Mare"],
     [easter, "Paștele"],
-    [easterMonday, "A doua zi de Paște"],
-    [pentecostSunday, "Rusalii"],
-    [pentecostMonday, "A doua zi de Rusalii"],
+    [addDaysUTC(easter, 1), "A doua zi de Paște"],
+    [addDaysUTC(easter, 49), "Rusalii"],
+    [addDaysUTC(easter, 50), "A doua zi de Rusalii"],
   ];
 
   for (const [date, name] of movable) {
-    holidays.push(date);
-    registerHoliday(date, name);
+    register(date, name);
   }
 
-  return holidays;
+  return entries;
+}
+
+function getHolidayEntries(year: number): Map<string, HolidayEntry> {
+  let entries = holidayCache.get(year);
+  if (!entries) {
+    entries = buildHolidays(year);
+    if (holidayCache.size >= MAX_CACHED_YEARS) {
+      const oldestYear = holidayCache.keys().next().value;
+      if (oldestYear !== undefined) {
+        holidayCache.delete(oldestYear);
+      }
+    }
+    holidayCache.set(year, entries);
+  }
+  return entries;
+}
+
+export function getRomanianHolidays(year: number): Date[] {
+  return Array.from(
+    getHolidayEntries(year).values(),
+    (entry) => new Date(entry.date.getTime())
+  );
 }
 
 export function getHolidayName(date: Date): string | undefined {
-  const key = format(startOfDay(date), "yyyy-MM-dd");
-  if (holidayNames.has(key)) {
-    return holidayNames.get(key);
-  }
-  getRomanianHolidays(date.getFullYear());
-  return holidayNames.get(key);
+  return getHolidayEntries(date.getUTCFullYear()).get(toDateOnlyString(date))
+    ?.name;
 }
 
 export function isHoliday(date: Date): boolean {
@@ -91,7 +103,7 @@ export function isHoliday(date: Date): boolean {
 }
 
 export function isWeekend(date: Date): boolean {
-  const day = getDay(date);
+  const day = date.getUTCDay();
   return day === 0 || day === 6;
 }
 
@@ -100,8 +112,8 @@ export function isWorkingDay(date: Date): boolean {
 }
 
 export function calculateWorkingDays(start: Date, end: Date): number {
-  const from = startOfDay(start);
-  const to = startOfDay(end);
+  const from = startOfDayUTC(start);
+  const to = startOfDayUTC(end);
   if (from > to) {
     return 0;
   }
@@ -112,18 +124,18 @@ export function calculateWorkingDays(start: Date, end: Date): number {
     if (isWorkingDay(current)) {
       count += 1;
     }
-    current = addDays(current, 1);
+    current = addDaysUTC(current, 1);
   }
   return count;
 }
 
 export function eachDayInRange(start: Date, end: Date): Date[] {
   const days: Date[] = [];
-  let current = startOfDay(start);
-  const to = startOfDay(end);
+  let current = startOfDayUTC(start);
+  const to = startOfDayUTC(end);
   while (current <= to) {
     days.push(current);
-    current = addDays(current, 1);
+    current = addDaysUTC(current, 1);
   }
   return days;
 }
@@ -133,15 +145,10 @@ export function intervalIntersectsMonth(
   end: Date,
   month: number
 ): boolean {
-  const year = start.getFullYear();
-  const monthStart = startOfDay(new Date(year, month - 1, 1));
-  const monthEnd = startOfDay(new Date(year, month, 0));
-  return (
-    isWithinInterval(monthStart, { start: startOfDay(start), end: startOfDay(end) }) ||
-    isWithinInterval(monthEnd, { start: startOfDay(start), end: startOfDay(end) }) ||
-    isWithinInterval(startOfDay(start), { start: monthStart, end: monthEnd }) ||
-    isWithinInterval(startOfDay(end), { start: monthStart, end: monthEnd })
-  );
+  const year = start.getUTCFullYear();
+  const monthStart = utcDate(year, month - 1, 1);
+  const monthEnd = utcDate(year, month, 0);
+  return datesOverlap(start, end, monthStart, monthEnd);
 }
 
 export function datesOverlap(
@@ -150,7 +157,12 @@ export function datesOverlap(
   startB: Date,
   endB: Date
 ): boolean {
-  return startOfDay(startA) <= startOfDay(endB) && startOfDay(endA) >= startOfDay(startB);
+  return (
+    startOfDayUTC(startA) <= startOfDayUTC(endB) &&
+    startOfDayUTC(endA) >= startOfDayUTC(startB)
+  );
 }
 
-export { isSameDay };
+export function isSameDay(a: Date, b: Date): boolean {
+  return toDateOnlyString(a) === toDateOnlyString(b);
+}

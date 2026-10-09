@@ -1,7 +1,6 @@
 import { ConstraintScope, ConstraintType, LeaveStatus } from "@prisma/client";
-import { startOfDay } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
 import { prisma } from "@/lib/db";
+import { startOfDayUTC, todayInBucharest } from "@/lib/dates";
 import {
   calculateWorkingDays,
   intervalIntersectsMonth,
@@ -26,10 +25,6 @@ const MONTH_NAMES = [
 
 function monthName(month: number): string {
   return MONTH_NAMES[month - 1] ?? `Luna ${month}`;
-}
-
-function todayInBucharest(): Date {
-  return startOfDay(toZonedTime(new Date(), "Europe/Bucharest"));
 }
 
 async function getActiveConstraints(workPointId: string | null) {
@@ -75,8 +70,8 @@ export async function validateLeaveRequest(
   endDate: Date
 ): Promise<ValidationResult> {
   const violations: string[] = [];
-  const start = startOfDay(startDate);
-  const end = startOfDay(endDate);
+  const start = startOfDayUTC(startDate);
+  const end = startOfDayUTC(endDate);
   const workingDays = calculateWorkingDays(start, end);
 
   const user = await prisma.user.findUnique({

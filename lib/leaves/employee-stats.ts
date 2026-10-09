@@ -1,15 +1,13 @@
 import { LeaveStatus } from "@prisma/client";
-import { startOfDay } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
 import { prisma } from "@/lib/db";
+import { todayInBucharest, utcDate } from "@/lib/dates";
 
 export async function getEmployeeDashboardStats(userId: string) {
-  const now = toZonedTime(new Date(), "Europe/Bucharest");
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const yearStart = startOfDay(new Date(year, 0, 1));
-  const yearEnd = startOfDay(new Date(year, 11, 31));
-  const today = startOfDay(now);
+  const today = todayInBucharest();
+  const year = today.getUTCFullYear();
+  const month = today.getUTCMonth() + 1;
+  const yearStart = utcDate(year, 0, 1);
+  const yearEnd = utcDate(year, 11, 31);
 
   const user = await prisma.user.findUnique({
     where: { id: userId },

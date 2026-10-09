@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ConstraintScope, ConstraintType } from "@prisma/client";
+import { parseDateInput } from "@/lib/dates";
 
 export const loginSchema = z.object({
   username: z
@@ -162,14 +163,26 @@ export const constraintUpdateSchema = z.object({
   active: z.boolean().optional(),
 });
 
+/** Dată calendaristică 'yyyy-MM-dd' → Date la miezul nopții UTC (lib/dates.ts). */
+function leaveDateSchema(message: string) {
+  return z.string({ error: message }).transform((value, ctx) => {
+    const date = parseDateInput(value);
+    if (!date) {
+      ctx.addIssue({ code: "custom", message });
+      return z.NEVER;
+    }
+    return date;
+  });
+}
+
 export const leaveCreateSchema = z.object({
-  startDate: z.coerce.date({ error: "Data de început este invalidă" }),
-  endDate: z.coerce.date({ error: "Data de sfârșit este invalidă" }),
+  startDate: leaveDateSchema("Data de început este invalidă"),
+  endDate: leaveDateSchema("Data de sfârșit este invalidă"),
 });
 
 export const leaveValidateQuerySchema = z.object({
-  startDate: z.coerce.date({ error: "Data de început este invalidă" }),
-  endDate: z.coerce.date({ error: "Data de sfârșit este invalidă" }),
+  startDate: leaveDateSchema("Data de început este invalidă"),
+  endDate: leaveDateSchema("Data de sfârșit este invalidă"),
 });
 
 export type LeaveCreateInput = z.infer<typeof leaveCreateSchema>;

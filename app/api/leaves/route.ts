@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { LeaveStatus } from "@prisma/client";
-import { addYears, startOfDay } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
 import { prisma } from "@/lib/db";
+import { addYearsUTC, todayInBucharest } from "@/lib/dates";
 import { requireSession } from "@/lib/api-session";
 import { leaveCreateSchema } from "@/lib/validators";
 import { validateLeaveRequest } from "@/lib/constraints/validate";
@@ -49,10 +48,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    const start = startOfDay(parsed.data.startDate);
-    const end = startOfDay(parsed.data.endDate);
-    const today = startOfDay(toZonedTime(new Date(), "Europe/Bucharest"));
-    const maxDate = addYears(today, 1);
+    const start = parsed.data.startDate;
+    const end = parsed.data.endDate;
+    const today = todayInBucharest();
+    const maxDate = addYearsUTC(today, 1);
 
     if (start > end) {
       return NextResponse.json(
