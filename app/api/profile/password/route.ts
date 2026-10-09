@@ -29,6 +29,7 @@ export async function POST(request: Request) {
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
+      omit: { passwordHash: false },
     });
 
     if (!user || !user.active || user.deletedAt) {

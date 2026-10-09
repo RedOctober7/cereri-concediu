@@ -39,6 +39,7 @@ export const authOptions: NextAuthOptions = {
             active: true,
             deletedAt: null,
           },
+          omit: { passwordHash: false },
         });
 
         if (!user) {
