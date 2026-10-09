@@ -46,7 +46,8 @@ export function ChangePasswordForm() {
         return;
       }
 
-      await update({ mustChangePassword: false });
+      // Fără payload: serverul recitește mustChangePassword din baza de date.
+      await update();
       toast.success("Parola a fost schimbată cu succes.");
       reset();
       router.push(session?.user?.role === "ADMIN" ? "/admin" : "/dashboard");

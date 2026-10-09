@@ -69,21 +69,36 @@ export const authOptions: NextAuthOptions = {
     error: "/login",
   },
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
         token.mustChangePassword = user.mustChangePassword;
-        token.sessionVersion = Date.now();
       }
 
-      if (trigger === "update" && session) {
-        if (session.mustChangePassword !== undefined) {
-          token.mustChangePassword = session.mustChangePassword;
+      // Payload-ul lui update() vine din browser, deci nu îl folosim niciodată:
+      // la orice update recitim rolul și obligația de schimbare a parolei din DB.
+      if (trigger === "update") {
+        const dbUser = token.id
+          ? await prisma.user.findUnique({
+              where: { id: token.id },
+              select: {
+                role: true,
+                mustChangePassword: true,
+                active: true,
+                deletedAt: true,
+              },
+            })
+          : null;
+
+        if (!dbUser || !dbUser.active || dbUser.deletedAt) {
+          // O eroare aruncată aici face ca next-auth să șteargă cookie-ul de
+          // sesiune (JWT_SESSION_ERROR), deci utilizatorul ajunge delogat.
+          throw new Error("Contul nu mai este activ.");
         }
-        if (session.role !== undefined) {
-          token.role = session.role;
-        }
+
+        token.role = dbUser.role;
+        token.mustChangePassword = dbUser.mustChangePassword;
       }
 
       return token;
