@@ -61,7 +61,10 @@ export async function PATCH(request: Request, context: RouteContext) {
         ...(parsed.data.forcePasswordReset !== undefined
           ? { mustChangePassword: parsed.data.forcePasswordReset }
           : {}),
+        // Dezactivarea e un soft-delete; la reactivare trebuie șters și deletedAt,
+        // altfel login-ul și cron-urile (care filtrează deletedAt: null) îl ignoră.
         ...(parsed.data.active === false ? { deletedAt: new Date() } : {}),
+        ...(parsed.data.active === true ? { deletedAt: null } : {}),
       },
     });
 
