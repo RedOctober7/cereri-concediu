@@ -28,6 +28,13 @@ export async function GET(request: Request) {
       parsed.data.endDate
     );
 
+    if (validation.blockingError) {
+      return NextResponse.json(
+        { error: validation.blockingError },
+        { status: 400 }
+      );
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: auth.session.user.id },
       select: { availableDays: true },

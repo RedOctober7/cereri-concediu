@@ -1,4 +1,9 @@
-import { ConstraintScope, ConstraintType, LeaveStatus } from "@prisma/client";
+import {
+  ConstraintScope,
+  ConstraintType,
+  LeaveStatus,
+  type Prisma,
+} from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { startOfDayUTC, todayInBucharest } from "@/lib/dates";
 import {
@@ -25,6 +30,34 @@ const MONTH_NAMES = [
 
 function monthName(month: number): string {
   return MONTH_NAMES[month - 1] ?? `Luna ${month}`;
+}
+
+export const OVERLAPPING_LEAVE_MESSAGE =
+  "Ai deja o cerere de concediu care se suprapune cu această perioadă.";
+
+const ACTIVE_LEAVE_STATUSES = [
+  LeaveStatus.PENDING_ADMIN,
+  LeaveStatus.APPROVED_AUTO,
+  LeaveStatus.APPROVED_ADMIN,
+];
+
+/** Există o cerere proprie activă (în așteptare sau aprobată) care se suprapune? */
+export async function hasOverlappingOwnLeave(
+  userId: string,
+  startDate: Date,
+  endDate: Date,
+  db: Pick<Prisma.TransactionClient, "leaveRequest"> = prisma
+): Promise<boolean> {
+  const existing = await db.leaveRequest.findFirst({
+    where: {
+      userId,
+      status: { in: ACTIVE_LEAVE_STATUSES },
+      startDate: { lte: endDate },
+      endDate: { gte: startDate },
+    },
+    select: { id: true },
+  });
+  return existing !== null;
 }
 
 async function getActiveConstraints(workPointId: string | null) {
@@ -84,6 +117,16 @@ export async function validateLeaveRequest(
       needsAdminApproval: true,
       violations: ["Contul utilizatorului nu este valid."],
       workingDays,
+      blockingError: null,
+    };
+  }
+
+  if (await hasOverlappingOwnLeave(userId, start, end)) {
+    return {
+      needsAdminApproval: true,
+      violations: [],
+      workingDays,
+      blockingError: OVERLAPPING_LEAVE_MESSAGE,
     };
   }
 
@@ -158,5 +201,6 @@ export async function validateLeaveRequest(
     needsAdminApproval: violations.length > 0,
     violations,
     workingDays,
+    blockingError: null,
   };
 }

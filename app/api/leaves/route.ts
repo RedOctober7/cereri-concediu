@@ -4,7 +4,11 @@ import { prisma } from "@/lib/db";
 import { addYearsUTC, todayInBucharest } from "@/lib/dates";
 import { requireSession } from "@/lib/api-session";
 import { leaveCreateSchema } from "@/lib/validators";
-import { validateLeaveRequest } from "@/lib/constraints/validate";
+import {
+  OVERLAPPING_LEAVE_MESSAGE,
+  hasOverlappingOwnLeave,
+  validateLeaveRequest,
+} from "@/lib/constraints/validate";
 import { calculateWorkingDays } from "@/lib/holidays";
 import { createAuditLog } from "@/lib/audit/log";
 
@@ -88,7 +92,23 @@ export async function POST(request: Request) {
       end
     );
 
+    if (validation.blockingError) {
+      return NextResponse.json(
+        { error: validation.blockingError },
+        { status: 400 }
+      );
+    }
+
     const leave = await prisma.$transaction(async (tx) => {
+      // Blochează rândul utilizatorului până la commit: două cereri simultane ale
+      // aceluiași angajat se serializează, deci verificarea de mai jos o vede pe prima.
+      await tx.$queryRaw`
+        SELECT id FROM "User" WHERE id = ${auth.session.user.id} FOR UPDATE
+      `;
+      if (await hasOverlappingOwnLeave(auth.session.user.id, start, end, tx)) {
+        throw new Error("OVERLAPPING_LEAVE");
+      }
+
       if (!validation.needsAdminApproval) {
         const user = await tx.user.findUnique({
           where: { id: auth.session.user.id },
@@ -164,6 +184,12 @@ export async function POST(request: Request) {
       if (error.message === "INSUFFICIENT_DAYS") {
         return NextResponse.json(
           { error: "Nu ai suficiente zile disponibile." },
+          { status: 400 }
+        );
+      }
+      if (error.message === "OVERLAPPING_LEAVE") {
+        return NextResponse.json(
+          { error: OVERLAPPING_LEAVE_MESSAGE },
           { status: 400 }
         );
       }
