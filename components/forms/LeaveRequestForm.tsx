@@ -35,6 +35,7 @@ export function LeaveRequestForm({
   const [year, setYear] = useState(new Date().getFullYear());
   const [range, setRange] = useState<DateRange | undefined>();
   const [preview, setPreview] = useState<ValidationPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -62,12 +63,15 @@ export function LeaveRequestForm({
         };
         if (res.ok && body.data) {
           setPreview(body.data);
+          setPreviewError(null);
         } else {
           setPreview(null);
+          setPreviewError(body.error ?? "Nu s-a putut verifica perioada.");
         }
       } catch {
         if (!controller.signal.aborted) {
           setPreview(null);
+          setPreviewError(null);
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -163,6 +167,14 @@ export function LeaveRequestForm({
                 <Loader2 className="size-4 animate-spin" />
                 Se verifică regulile...
               </div>
+            ) : null}
+
+            {hasCompleteRange && previewError ? (
+              <Alert variant="destructive">
+                <AlertCircle className="size-4" />
+                <AlertTitle>Cererea nu poate fi trimisă</AlertTitle>
+                <AlertDescription>{previewError}</AlertDescription>
+              </Alert>
             ) : null}
 
             {hasCompleteRange && preview ? (

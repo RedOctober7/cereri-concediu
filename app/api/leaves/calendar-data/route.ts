@@ -27,6 +27,11 @@ export async function GET(request: Request) {
       searchParams.get("year") ?? todayInBucharest().getUTCFullYear()
     );
 
+    // Calculul Paștelui (lib/holidays.ts) este valabil pentru 1900–2099.
+    if (!Number.isInteger(year) || year < 1900 || year > 2099) {
+      return NextResponse.json({ error: "Anul este invalid." }, { status: 400 });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: auth.session.user.id },
       select: { workPointId: true },

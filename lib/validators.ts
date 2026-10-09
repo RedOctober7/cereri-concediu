@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ConstraintScope, ConstraintType } from "@prisma/client";
-import { parseDateInput } from "@/lib/dates";
+import { addYearsUTC, parseDateInput, todayInBucharest } from "@/lib/dates";
 
 export const loginSchema = z.object({
   username: z
@@ -175,14 +175,56 @@ function leaveDateSchema(message: string) {
   });
 }
 
-export const leaveCreateSchema = z.object({
-  startDate: leaveDateSchema("Data de început este invalidă"),
-  endDate: leaveDateSchema("Data de sfârșit este invalidă"),
-});
+// Limite pentru interval: POST /api/leaves acceptă oricum doar perioade de
+// până la un an de azi, iar numărarea zilelor lucrătoare parcurge intervalul
+// zi cu zi, deci un interval nelimitat ar bloca serverul.
+const LEAVE_MAX_SPAN_YEARS = 1;
+const LEAVE_MAX_PAST_YEARS = 1;
+const LEAVE_MAX_FUTURE_YEARS = 2;
 
-export const leaveValidateQuerySchema = z.object({
-  startDate: leaveDateSchema("Data de început este invalidă"),
-  endDate: leaveDateSchema("Data de sfârșit este invalidă"),
-});
+const leaveRangeSchema = z
+  .object({
+    startDate: leaveDateSchema("Data de început este invalidă"),
+    endDate: leaveDateSchema("Data de sfârșit este invalidă"),
+  })
+  .superRefine(({ startDate, endDate }, ctx) => {
+    if (!(startDate instanceof Date) || !(endDate instanceof Date)) {
+      return;
+    }
+
+    if (startDate > endDate) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Data de început trebuie să fie înainte de data de sfârșit.",
+        path: ["endDate"],
+      });
+      return;
+    }
+
+    if (endDate > addYearsUTC(startDate, LEAVE_MAX_SPAN_YEARS)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Perioada selectată nu poate depăși un an.",
+        path: ["endDate"],
+      });
+      return;
+    }
+
+    const today = todayInBucharest();
+    if (
+      startDate < addYearsUTC(today, -LEAVE_MAX_PAST_YEARS) ||
+      endDate > addYearsUTC(today, LEAVE_MAX_FUTURE_YEARS)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Perioada selectată este prea departe în trecut sau în viitor.",
+        path: ["startDate"],
+      });
+    }
+  });
+
+export const leaveCreateSchema = leaveRangeSchema;
+
+export const leaveValidateQuerySchema = leaveRangeSchema;
 
 export type LeaveCreateInput = z.infer<typeof leaveCreateSchema>;
