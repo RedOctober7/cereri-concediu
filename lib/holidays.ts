@@ -10,6 +10,8 @@ import {
 type HolidayEntry = { date: Date; name: string };
 
 const MAX_CACHED_YEARS = 16;
+/** 6 și 7 ianuarie sunt sărbători legale (art. 139 Codul muncii) din 2024. */
+const FIRST_YEAR_WITH_JANUARY_6_7 = 2024;
 const holidayCache = new Map<number, Map<string, HolidayEntry>>();
 
 /** Paște Ortodox (duminică) — algoritm Gauss, convertit la calendar gregorian. */
@@ -35,12 +37,27 @@ export function getOrthodoxEasterSunday(year: number): Date {
 function buildHolidays(year: number): Map<string, HolidayEntry> {
   const entries = new Map<string, HolidayEntry>();
   const register = (date: Date, name: string) => {
-    entries.set(toDateOnlyString(date), { date, name });
+    const key = toDateOnlyString(date);
+    const existing = entries.get(key);
+    // Ex.: 1 iunie 2026 este și Ziua Copilului, și a doua zi de Rusalii.
+    entries.set(key, {
+      date,
+      name: existing ? `${existing.name} / ${name}` : name,
+    });
   };
+
+  const januaryHolidays: Array<[number, number, string]> =
+    year >= FIRST_YEAR_WITH_JANUARY_6_7
+      ? [
+          [1, 6, "Boboteaza"],
+          [1, 7, "Sfântul Ioan Botezătorul"],
+        ]
+      : [];
 
   const fixed: Array<[number, number, string]> = [
     [1, 1, "Anul Nou"],
     [1, 2, "A doua zi de Anul Nou"],
+    ...januaryHolidays,
     [1, 24, "Ziua Unirii Principatelor Române"],
     [5, 1, "Ziua Muncii"],
     [6, 1, "Ziua Copilului"],
