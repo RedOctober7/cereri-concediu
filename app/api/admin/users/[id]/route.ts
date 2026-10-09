@@ -68,12 +68,17 @@ export async function PATCH(request: Request, context: RouteContext) {
       },
     });
 
+    // Parola în clar nu ajunge niciodată în audit log; notăm doar că a fost resetată.
+    const { password, ...auditDetails } = parsed.data;
     await createAuditLog({
       userId: auth.session.user.id,
       action: "UPDATE_USER",
       entityType: "User",
       entityId: updated.id,
-      details: parsed.data as Record<string, unknown>,
+      details: {
+        ...auditDetails,
+        ...(password ? { passwordReset: true } : {}),
+      },
     });
 
     return NextResponse.json({ data: updated });
