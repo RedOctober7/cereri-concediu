@@ -162,10 +162,19 @@ export function intervalIntersectsMonth(
   end: Date,
   month: number
 ): boolean {
-  const year = start.getUTCFullYear();
-  const monthStart = utcDate(year, month - 1, 1);
-  const monthEnd = utcDate(year, month, 0);
-  return datesOverlap(start, end, monthStart, monthEnd);
+  // Intervalul poate trece în anul următor (ex. decembrie–ianuarie).
+  for (
+    let year = start.getUTCFullYear();
+    year <= end.getUTCFullYear();
+    year++
+  ) {
+    const monthStart = utcDate(year, month - 1, 1);
+    const monthEnd = utcDate(year, month, 0);
+    if (datesOverlap(start, end, monthStart, monthEnd)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function datesOverlap(
