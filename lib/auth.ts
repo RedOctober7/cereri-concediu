@@ -5,6 +5,21 @@ import { prisma } from "@/lib/db";
 import { loginSchema } from "@/lib/validators";
 import { rateLimitAuth } from "@/lib/rate-limit";
 
+// Cât timp avem încredere în rolul și starea contului din JWT fără să le recitim
+// din baza de date. getServerSession (layout-uri, pagini, gărzi API) trece prin
+// callback-ul jwt; proxy.ts doar decodează JWT-ul (vezi comentariul de acolo).
+const SESSION_REVALIDATE_MS = 5 * 60 * 1000;
+
+function isRevalidationDue(checkedAt: number | undefined, now: number): boolean {
+  // Token emis înainte de revalidarea periodică: îl verificăm imediat.
+  if (typeof checkedAt !== "number") {
+    return true;
+  }
+  const age = now - checkedAt;
+  // Un checkedAt din viitor (ceas decalat între instanțe) nu prelungește încrederea.
+  return age < 0 || age >= SESSION_REVALIDATE_MS;
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -75,32 +90,53 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
         token.mustChangePassword = user.mustChangePassword;
+        token.checkedAt = Date.now();
+        return token;
       }
 
       // Payload-ul lui update() vine din browser, deci nu îl folosim niciodată:
-      // la orice update recitim rolul și obligația de schimbare a parolei din DB.
-      if (trigger === "update") {
-        const dbUser = token.id
-          ? await prisma.user.findUnique({
-              where: { id: token.id },
-              select: {
-                role: true,
-                mustChangePassword: true,
-                active: true,
-                deletedAt: true,
-              },
-            })
-          : null;
-
-        if (!dbUser || !dbUser.active || dbUser.deletedAt) {
-          // O eroare aruncată aici face ca next-auth să șteargă cookie-ul de
-          // sesiune (JWT_SESSION_ERROR), deci utilizatorul ajunge delogat.
-          throw new Error("Contul nu mai este activ.");
-        }
-
-        token.role = dbUser.role;
-        token.mustChangePassword = dbUser.mustChangePassword;
+      // recitim rolul și starea contului din DB la orice update() și, periodic, la
+      // citirea sesiunii. Altfel dezactivarea, resetarea forțată a parolei sau
+      // schimbarea rolului nu ar atinge sesiunile deschise (next-auth reemite
+      // cookie-ul la fiecare /api/auth/session, deci un JWT ar trăi la nesfârșit).
+      // getServerSession din RSC/rute nu poate rescrie cookie-ul, deci după 5 minute
+      // recitirea se repetă la fiecare cerere server până când browserul îl
+      // reîmprospătează; de aceea e un singur findUnique cu select minim.
+      const now = Date.now();
+      if (trigger !== "update" && !isRevalidationDue(token.checkedAt, now)) {
+        return token;
       }
+
+      const dbUser = token.id
+        ? await prisma.user.findUnique({
+            where: { id: token.id },
+            select: {
+              role: true,
+              mustChangePassword: true,
+              active: true,
+              deletedAt: true,
+            },
+          })
+        : null;
+
+      if (!dbUser || !dbUser.active || dbUser.deletedAt) {
+        // O eroare aruncată aici face ca next-auth să nu mai întoarcă sesiunea
+        // (getServerSession dă null) și să șteargă cookie-ul la /api/auth/session
+        // (JWT_SESSION_ERROR), deci utilizatorul ajunge delogat.
+        throw new Error("Contul nu mai este activ.");
+      }
+
+      token.role = dbUser.role;
+      // La update() (POST /api/auth/session, cookie-ul se rescrie imediat) copiem
+      // valoarea din DB. La revalidarea periodică doar ridicăm obligația: din RSC
+      // cookie-ul rămâne cu true, proxy-ul ar trimite în continuare la
+      // /schimba-parola, iar pagina ar redirecționa înapoi (buclă de redirect).
+      // O obligație scoasă din DB dispare deci la schimbarea parolei sau la relogare.
+      token.mustChangePassword =
+        trigger === "update"
+          ? dbUser.mustChangePassword
+          : token.mustChangePassword || dbUser.mustChangePassword;
+      token.checkedAt = now;
 
       return token;
     },

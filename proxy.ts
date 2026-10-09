@@ -11,6 +11,14 @@ function matchesPath(pathname: string, prefixes: string[]): boolean {
   );
 }
 
+// withAuth citește tokenul cu getToken, care doar decodează JWT-ul din cookie:
+// callback-ul jwt din lib/auth.ts (revalidarea din DB) nu rulează aici. Rolul și
+// mustChangePassword văzute de proxy pot rămâne deci în urmă față de DB: până la
+// 5 minute (SESSION_REVALIDATE_MS) după ultima revalidare, plus până când browserul
+// cere din nou /api/auth/session și primește cookie-ul reîmprospătat. Un cont
+// dezactivat trece și el de proxy până atunci.
+// Deciziile de aici sunt doar optimiste: autoritatea rămân layout-urile/paginile
+// server și gărzile API (getServerSession, requireSession, requireAdminSession).
 export default withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
