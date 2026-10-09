@@ -41,12 +41,19 @@ const ACTIVE_LEAVE_STATUSES = [
   LeaveStatus.APPROVED_ADMIN,
 ];
 
+/** Ce folosește hasOverlappingOwnLeave: merge atât cu prisma, cât și cu tx din $transaction. */
+type LeaveFinder = {
+  leaveRequest: {
+    findFirst(args: Prisma.LeaveRequestFindFirstArgs): PromiseLike<unknown>;
+  };
+};
+
 /** Există o cerere proprie activă (în așteptare sau aprobată) care se suprapune? */
 export async function hasOverlappingOwnLeave(
   userId: string,
   startDate: Date,
   endDate: Date,
-  db: Pick<Prisma.TransactionClient, "leaveRequest"> = prisma
+  db: LeaveFinder = prisma
 ): Promise<boolean> {
   const existing = await db.leaveRequest.findFirst({
     where: {
