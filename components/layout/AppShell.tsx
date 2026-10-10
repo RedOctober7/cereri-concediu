@@ -22,6 +22,7 @@ import {
   useSignOut,
   type UserMenuLink,
 } from "@/components/layout/UserMenu";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 
 export type ShellNavItem = {
   href: string;
@@ -250,6 +251,7 @@ export function AppShell({
         </nav>
         <div className="flex items-center gap-1 border-t border-sidebar-border p-3">
           <UserMenu name={user.name} email={user.email} links={userLinks} variant="sidebar" />
+          <ThemeToggle />
         </div>
       </aside>
 
@@ -271,6 +273,7 @@ export function AppShell({
             {appName}
           </Link>
           <div className="ml-auto flex items-center gap-1">
+            <ThemeToggle />
             <UserMenu name={user.name} email={user.email} links={userLinks} variant="compact" />
           </div>
         </header>
