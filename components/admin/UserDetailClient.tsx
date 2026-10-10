@@ -54,8 +54,8 @@ export function UserDetailClient({
       if (!res.ok) throw new Error(data.error);
       toast.success('Parola a fost resetată. Angajatul va trebui să o schimbe la următorul login.');
       setNewPassword('');
-    } catch (err: any) {
-      toast.error(err.message || 'A apărut o eroare.');
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'A apărut o eroare.');
     } finally {
       setLoading(false);
     }
@@ -73,8 +73,8 @@ export function UserDetailClient({
       if (!res.ok) throw new Error(data.error);
       toast.success(user.active ? 'Utilizator dezactivat.' : 'Utilizator activat.');
       router.refresh();
-    } catch (err: any) {
-      toast.error(err.message || 'A apărut o eroare.');
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'A apărut o eroare.');
     } finally {
       setLoading(false);
     }
