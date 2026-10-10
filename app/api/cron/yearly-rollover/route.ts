@@ -4,13 +4,13 @@ import { prisma } from '@/lib/db';
 import { verifyCronRequest } from '@/lib/cron-auth';
 import {
   YEARLY_ROLLOVER_ACTION,
-  computeExpiringDays,
   expiryDeadline,
   latestExpiredYear,
   openingBalanceYear,
+  parseRolloverDetails,
+  planRollover,
+  type YearlyDays,
 } from '@/lib/leaves/rollover';
-
-const MIN_YEAR = 2000;
 
 export async function GET(req: NextRequest) {
   const authError = verifyCronRequest(req);
@@ -19,25 +19,8 @@ export async function GET(req: NextRequest) {
   }
 
   // Pe 1 iulie Y expiră zilele născute în Y - 2 (Codul Muncii art. 146 alin. 2).
-  // ?year= permite doar un an ale cărui zile au expirat deja (ex. o rulare ratată).
-  const maxYear = latestExpiredYear(new Date());
-  const yearParam = req.nextUrl.searchParams.get('year');
-  let expiredYear = maxYear;
-
-  if (yearParam !== null) {
-    const requested = Number(yearParam);
-    if (!/^\d{4}$/.test(yearParam) || requested < MIN_YEAR || requested > maxYear) {
-      return NextResponse.json(
-        {
-          error: `Anul trebuie să fie între ${MIN_YEAR} și ${maxYear}; zilele din anii următori nu au expirat încă.`,
-        },
-        { status: 400 }
-      );
-    }
-    expiredYear = requested;
-  }
-
-  const deadline = expiryDeadline(expiredYear);
+  // Fiecare rulare expiră, în ordine, și anii rămași neprocesați (rulare ratată sau eșuată).
+  const latestExpired = latestExpiredYear(new Date());
 
   const users = await prisma.user.findMany({
     where: {
@@ -55,23 +38,10 @@ export async function GET(req: NextRequest) {
 
   for (const { id } of users) {
     try {
-      const expiredDays = await prisma.$transaction(async (tx) => {
+      const steps = await prisma.$transaction(async (tx) => {
         // Blocăm rândul utilizatorului: rulările concurente (retry, declanșare manuală)
-        // așteaptă aici, apoi găsesc înregistrarea de audit de mai jos și sar peste.
+        // așteaptă aici, apoi găsesc înregistrările de audit scrise de prima și nu mai au ce face.
         await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${id} FOR UPDATE`;
-
-        const alreadyDone = await tx.auditLog.findFirst({
-          where: {
-            action: YEARLY_ROLLOVER_ACTION,
-            entityType: 'User',
-            entityId: id,
-            details: { path: ['expiredYear'], equals: expiredYear },
-          },
-          select: { id: true },
-        });
-        if (alreadyDone) {
-          return null;
-        }
 
         const user = await tx.user.findUniqueOrThrow({
           where: { id },
@@ -84,23 +54,31 @@ export async function GET(req: NextRequest) {
         });
 
         const accruals = await tx.leaveAccrual.findMany({
-          where: { userId: id, year: { gte: expiredYear } },
+          where: { userId: id },
           select: { year: true, days: true },
         });
 
-        const pending = await tx.leaveRequest.aggregate({
-          _sum: { workingDays: true },
+        const rolloverLogs = await tx.auditLog.findMany({
+          where: {
+            action: YEARLY_ROLLOVER_ACTION,
+            entityType: 'User',
+            entityId: id,
+          },
+          select: { details: true },
+        });
+
+        const pendingLeaves = await tx.leaveRequest.findMany({
           where: {
             userId: id,
             status: LeaveStatus.PENDING_ADMIN,
-            startDate: { lt: deadline },
+            startDate: { lt: expiryDeadline(latestExpired) },
           },
+          select: { startDate: true, workingDays: true },
         });
 
-        const days = computeExpiringDays({
-          expiringYear: expiredYear,
+        const planned = planRollover({
+          latestExpired,
           availableDays: user.availableDays,
-          pendingDaysBeforeDeadline: pending._sum.workingDays ?? 0,
           entitlements: [
             ...accruals,
             {
@@ -108,45 +86,50 @@ export async function GET(req: NextRequest) {
               days: user.initialLeaveDays,
             },
           ],
+          alreadyExpired: rolloverLogs
+            .map((log) => parseRolloverDetails(log.details))
+            .filter((entry): entry is YearlyDays => entry !== null),
+          pendingLeaves,
         });
 
-        let availableDaysAfter = user.availableDays;
-        if (days > 0) {
-          const updated = await tx.user.update({
-            where: { id },
-            data: { availableDays: { decrement: days } },
-            select: { availableDays: true },
+        // Un rând de audit pe an expirat, în aceeași tranzacție cu scăderea din sold.
+        for (const step of planned) {
+          if (step.expiredDays > 0) {
+            await tx.user.update({
+              where: { id },
+              data: { availableDays: { decrement: step.expiredDays } },
+              select: { id: true },
+            });
+          }
+
+          await tx.auditLog.create({
+            data: {
+              action: YEARLY_ROLLOVER_ACTION,
+              entityType: 'User',
+              entityId: id,
+              details: { ...step },
+            },
           });
-          availableDaysAfter = updated.availableDays;
         }
 
-        await tx.auditLog.create({
-          data: {
-            action: YEARLY_ROLLOVER_ACTION,
-            entityType: 'User',
-            entityId: id,
-            details: {
-              expiredYear,
-              expiredDays: days,
-              availableDaysBefore: user.availableDays,
-              availableDaysAfter,
-            },
-          },
-        });
-
-        return days;
+        return planned;
       });
 
-      if (expiredDays === null) {
+      if (steps.length === 0) {
         skipped++;
         continue;
       }
 
       processed++;
-      totalExpired += expiredDays;
 
-      if (expiredDays > 0) {
-        console.log(`[Rollover] User ${id}: -${expiredDays} zile expirate din ${expiredYear}`);
+      for (const step of steps) {
+        totalExpired += step.expiredDays;
+
+        if (step.expiredDays > 0) {
+          console.log(
+            `[Rollover] User ${id}: -${step.expiredDays} zile expirate din ${step.expiredYear}`
+          );
+        }
       }
     } catch (e) {
       failed++;
@@ -157,11 +140,27 @@ export async function GET(req: NextRequest) {
   totalExpired = Math.round(totalExpired * 100) / 100;
 
   console.log(
-    `[Rollover] An ${expiredYear}: ${processed} procesați, ${skipped} săriți, ${failed} erori, ${totalExpired} zile expirate`
+    `[Rollover] Până la anul ${latestExpired}: ${processed} procesați, ${skipped} săriți, ${failed} erori, ${totalExpired} zile expirate`
   );
 
-  return NextResponse.json(
-    { success: failed === 0, expiredYear, processed, skipped, failed, totalExpired },
-    { status: failed > 0 ? 500 : 200 }
-  );
+  const summary = {
+    expiredThroughYear: latestExpired,
+    processed,
+    skipped,
+    failed,
+    totalExpired,
+  };
+
+  if (failed > 0) {
+    return NextResponse.json(
+      {
+        error: `Expirarea zilelor nu a reușit pentru toți angajații (erori: ${failed}).`,
+        success: false,
+        ...summary,
+      },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true, ...summary });
 }
