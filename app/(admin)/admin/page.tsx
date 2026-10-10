@@ -15,7 +15,7 @@ import { prisma } from "@/lib/db";
 import { APP_TIME_ZONE, addDaysUTC, todayInBucharest } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -189,10 +189,10 @@ function EmptyText({ children }: { children: React.ReactNode }) {
 function MoreLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <CardFooter className="justify-end">
-      <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={href} />}>
+      <Link href={href} className={buttonVariants({ variant: "ghost", size: "sm" })}>
         {children}
         <ArrowRight data-icon="inline-end" />
-      </Button>
+      </Link>
     </CardFooter>
   );
 }
@@ -343,10 +343,10 @@ export default async function AdminDashboardPage() {
           </p>
         </div>
         {pendingCount > 0 ? (
-          <Button className="h-10 gap-2" nativeButton={false} render={<Link href="/admin/cereri" />}>
+          <Link href="/admin/cereri" className={cn(buttonVariants(), "h-10 gap-2 px-3")}>
             <ClipboardList />
             Vezi cererile în așteptare
-          </Button>
+          </Link>
         ) : null}
       </div>
 
