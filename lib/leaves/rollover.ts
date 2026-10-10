@@ -38,6 +38,17 @@ export function openingBalanceYear(hireDate: Date, createdAt: Date): number {
 
 export type YearlyDays = { year: number; days: number };
 
+/** Zilele câștigate pe ani: rândurile LeaveAccrual plus soldul inițial, atribuit lui `openingBalanceYear`. */
+export function userEntitlements(
+  user: { initialLeaveDays: number; hireDate: Date; createdAt: Date },
+  accruals: YearlyDays[]
+): YearlyDays[] {
+  return [
+    ...accruals,
+    { year: openingBalanceYear(user.hireDate, user.createdAt), days: user.initialLeaveDays },
+  ];
+}
+
 /** O cerere PENDING_ADMIN: zilele ei nu sunt încă scăzute din sold. */
 export type PendingLeave = { startDate: Date; workingDays: number };
 

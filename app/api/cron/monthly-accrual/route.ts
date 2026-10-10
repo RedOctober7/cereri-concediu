@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { verifyCronRequest } from '@/lib/cron-auth';
 
+// Un angajat înseamnă câteva interogări; lăsăm timp pentru firme mai mari.
+export const maxDuration = 300;
+
 export async function GET(req: NextRequest) {
   const authError = verifyCronRequest(req);
   if (authError) {
@@ -21,12 +24,22 @@ export async function GET(req: NextRequest) {
       role: 'EMPLOYEE',
       hireDate: { lt: cutoffDate },
     },
+    select: { id: true },
   });
 
-  let accrued = 0;
-  let skipped = 0;
+  // Filtru rapid: cine are deja acumularea pe luna asta este sărit, ca o rulare repetată
+  // (ex. după un timeout) să avanseze repede. Garanția rămâne constrângerea unică din bază.
+  const alreadyAccrued = await prisma.leaveAccrual.findMany({
+    where: { month, year },
+    select: { userId: true },
+  });
+  const accruedIds = new Set(alreadyAccrued.map((accrual) => accrual.userId));
+  const dueUsers = users.filter((user) => !accruedIds.has(user.id));
 
-  for (const user of users) {
+  let accrued = 0;
+  let skipped = users.length - dueUsers.length;
+
+  for (const user of dueUsers) {
     try {
       await prisma.leaveAccrual.create({
         data: {

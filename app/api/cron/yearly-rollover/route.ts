@@ -6,11 +6,15 @@ import {
   YEARLY_ROLLOVER_ACTION,
   expiryDeadline,
   latestExpiredYear,
-  openingBalanceYear,
   parseRolloverDetails,
   planRollover,
+  userEntitlements,
+  yearsToExpire,
   type YearlyDays,
 } from '@/lib/leaves/rollover';
+
+// Un angajat înseamnă o tranzacție cu câteva interogări; lăsăm timp pentru firme mai mari.
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   const authError = verifyCronRequest(req);
@@ -28,15 +32,56 @@ export async function GET(req: NextRequest) {
       deletedAt: null,
       role: 'EMPLOYEE',
     },
-    select: { id: true },
+    select: { id: true, initialLeaveDays: true, hireDate: true, createdAt: true },
   });
 
+  // Filtru rapid, fără tranzacții: cine are deja rând de audit pentru toți anii de expirat
+  // este sărit, ca o rulare repetată (ex. după un timeout) să avanseze repede.
+  // Garanția rămâne verificarea din tranzacție, făcută sub lock.
+  const [accrualTotals, allRolloverLogs] = await Promise.all([
+    prisma.leaveAccrual.groupBy({
+      by: ['userId', 'year'],
+      where: { year: { lte: latestExpired } },
+      _sum: { days: true },
+    }),
+    prisma.auditLog.findMany({
+      where: { action: YEARLY_ROLLOVER_ACTION, entityType: 'User' },
+      select: { entityId: true, details: true },
+    }),
+  ]);
+
+  const accrualsByUser = new Map<string, YearlyDays[]>();
+  for (const row of accrualTotals) {
+    const list = accrualsByUser.get(row.userId) ?? [];
+    list.push({ year: row.year, days: row._sum.days ?? 0 });
+    accrualsByUser.set(row.userId, list);
+  }
+
+  const expiredYearsByUser = new Map<string, number[]>();
+  for (const log of allRolloverLogs) {
+    const entry = parseRolloverDetails(log.details);
+    if (log.entityId && entry) {
+      const list = expiredYearsByUser.get(log.entityId) ?? [];
+      list.push(entry.year);
+      expiredYearsByUser.set(log.entityId, list);
+    }
+  }
+
+  const dueUsers = users.filter(
+    (user) =>
+      yearsToExpire(
+        userEntitlements(user, accrualsByUser.get(user.id) ?? []),
+        expiredYearsByUser.get(user.id) ?? [],
+        latestExpired
+      ).length > 0
+  );
+
   let processed = 0;
-  let skipped = 0;
+  let skipped = users.length - dueUsers.length;
   let failed = 0;
   let totalExpired = 0;
 
-  for (const { id } of users) {
+  for (const { id } of dueUsers) {
     try {
       const steps = await prisma.$transaction(async (tx) => {
         // Blocăm rândul utilizatorului: rulările concurente (retry, declanșare manuală)
@@ -79,13 +124,7 @@ export async function GET(req: NextRequest) {
         const planned = planRollover({
           latestExpired,
           availableDays: user.availableDays,
-          entitlements: [
-            ...accruals,
-            {
-              year: openingBalanceYear(user.hireDate, user.createdAt),
-              days: user.initialLeaveDays,
-            },
-          ],
+          entitlements: userEntitlements(user, accruals),
           alreadyExpired: rolloverLogs
             .map((log) => parseRolloverDetails(log.details))
             .filter((entry): entry is YearlyDays => entry !== null),
