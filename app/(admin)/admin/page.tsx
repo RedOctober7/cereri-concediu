@@ -36,6 +36,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDays, formatPeriod, pluralRo } from "./cereri/format";
+import { NO_WORK_POINT } from "./cereri/query";
 
 /** Sub acest sold (zile disponibile) angajatul apare la „Sold redus”. */
 const LOW_BALANCE_DAYS = 3;
@@ -116,8 +117,8 @@ function StatTile({
     >
       <CardHeader>
         <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-3xl font-semibold tabular-nums">{value}</CardTitle>
-        <CardAction>
+        <CardTitle className="text-2xl font-semibold tabular-nums sm:text-3xl">{value}</CardTitle>
+        <CardAction className="hidden sm:block">
           <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:size-5">
             {icon}
           </span>
@@ -173,7 +174,7 @@ function PersonRow({
         ) : (
           <p className="truncate text-sm font-medium">{name}</p>
         )}
-        <p className="truncate text-xs text-muted-foreground">{detail}</p>
+        <p className="text-xs text-muted-foreground sm:truncate">{detail}</p>
       </div>
       <div className="shrink-0 text-right text-xs text-muted-foreground">{aside}</div>
     </li>
@@ -297,7 +298,8 @@ async function DashboardContent() {
 
   const workPointRows = [
     ...workPoints
-      .filter((wp) => wp.active || wp._count.users > 0)
+      // Un punct inactiv apare doar dacă mai are angajați activi sau cereri de decis.
+      .filter((wp) => wp.active || wp._count.users > 0 || pendingByWorkPoint.has(wp.id))
       .map((wp) => ({
         key: wp.id,
         filter: wp.id,
@@ -308,8 +310,8 @@ async function DashboardContent() {
     ...(employeesWithoutWorkPoint > 0 || pendingByWorkPoint.has(null)
       ? [
           {
-            key: "none",
-            filter: "none",
+            key: NO_WORK_POINT,
+            filter: NO_WORK_POINT,
             name: "Fără punct de lucru",
             inactive: false,
             employees: employeesWithoutWorkPoint,
@@ -317,7 +319,7 @@ async function DashboardContent() {
         ]
       : []),
   ].map((row) => {
-    const mapKey = row.key === "none" ? null : row.key;
+    const mapKey = row.key === NO_WORK_POINT ? null : row.key;
     return {
       ...row,
       onLeave: onLeaveByWorkPoint.get(mapKey)?.size ?? 0,
@@ -331,7 +333,7 @@ async function DashboardContent() {
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatTile
           label="Cereri în așteptare"
           value={pendingCount}
@@ -498,9 +500,9 @@ async function DashboardContent() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Punct de lucru</TableHead>
-                  <TableHead className="text-right">Angajați</TableHead>
-                  <TableHead className="text-right">În concediu azi</TableHead>
-                  <TableHead className="text-right">În așteptare</TableHead>
+                  <TableHead className="w-20 text-right whitespace-normal">Angajați</TableHead>
+                  <TableHead className="w-24 text-right whitespace-normal">În concediu azi</TableHead>
+                  <TableHead className="w-24 text-right whitespace-normal">În așteptare</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -566,7 +568,7 @@ function DashboardSkeleton() {
       <p role="status" className="sr-only">
         Se încarcă panoul...
       </p>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
           <div key={index} className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
             <Skeleton className="h-3.5 w-1/2" />
