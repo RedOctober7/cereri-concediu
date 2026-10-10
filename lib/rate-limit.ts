@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
@@ -213,9 +213,12 @@ export function resetAuthRateLimitForTests() {
   lastErrorLogAt = 0;
 }
 
-// Cheile din Redis nu conțin numele de utilizator sau IP-ul în clar.
+// Cheile din Redis nu conțin numele de utilizator sau IP-ul: un HMAC cu secretul
+// aplicației, ca nici IP-urile (puține, deci ușor de ghicit) să nu poată fi recuperate.
 function digest(value: string): string {
-  return createHash("sha256").update(value, "utf8").digest("base64url");
+  return createHmac("sha256", process.env.NEXTAUTH_SECRET ?? "")
+    .update(value, "utf8")
+    .digest("base64url");
 }
 
 export type AuthAttempt = {

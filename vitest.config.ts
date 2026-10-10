@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
@@ -9,7 +10,8 @@ const TIME_ZONES = ["UTC", "Europe/Bucharest"] as const;
 export default defineConfig({
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL("./", import.meta.url)),
+      // Ca în tsconfig.json: "@/lib/db" → <rădăcina proiectului>/lib/db.
+      "@": resolve(fileURLToPath(new URL(".", import.meta.url))),
     },
   },
   test: {
