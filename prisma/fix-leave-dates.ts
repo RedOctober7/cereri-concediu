@@ -16,10 +16,12 @@ const prisma = new PrismaClient();
 //   npm run db:fix-leave-dates -- --before=<timestamp ISO al deploy-ului corecției>
 //   npm run db:fix-leave-dates -- --before=<...> --apply
 //
-// Se ating doar cererile active (PENDING_ADMIN, APPROVED_AUTO, APPROVED_ADMIN):
-// cele create înainte de --before sunt decalate cu +1 zi, apoi la toate se
-// recalculează workingDays; la cele aprobate soldul (availableDays) se ajustează
-// cu diferența. Cererile respinse sau anulate rămân neschimbate.
+// Toate cererile create înainte de --before (orice status) sunt decalate cu +1 zi.
+// La cererile active (PENDING_ADMIN, APPROVED_AUTO, APPROVED_ADMIN) se
+// recalculează în plus workingDays, inclusiv la cele create după --before; la cele
+// aprobate soldul (availableDays) se ajustează cu diferența. La cererile respinse
+// sau anulate se corectează doar datele: workingDays și soldul rămân neschimbate.
+// Cererile respinse/anulate create după --before nu sunt atinse.
 //
 // Fără --apply doar afișează modificările propuse. Fiecare cerere modificată
 // primește un AuditLog LEAVE_DATA_REPAIR; cererile care au deja unul sunt sărite,
@@ -58,6 +60,8 @@ type LeaveRow = Prisma.LeaveRequestGetPayload<{ select: typeof LEAVE_SELECT }>;
 type Change = {
   leave: LeaveRow;
   shifted: boolean;
+  /** Cerere respinsă/anulată: doar datele se decalează, fără workingDays sau sold. */
+  datesOnly: boolean;
   newStartDate: Date;
   newEndDate: Date;
   newWorkingDays: number;
@@ -107,19 +111,45 @@ function parseArgs(argv: string[]): { before: Date; apply: boolean } {
   return { before, apply };
 }
 
+function isActive(leave: LeaveRow) {
+  return ACTIVE_STATUSES.includes(leave.status);
+}
+
+/**
+ * Cererile pe care scriptul le poate modifica: toate cele active (workingDays) și
+ * toate cele create înainte de corecție, indiferent de status (datele).
+ */
+function repairScope(before: Date): Prisma.LeaveRequestWhereInput {
+  return {
+    OR: [{ status: { in: ACTIVE_STATUSES } }, { createdAt: { lt: before } }],
+  };
+}
+
 /** Modificarea necesară pentru o cerere, sau null dacă e deja corectă. */
 function planChange(leave: LeaveRow, before: Date): Change | null {
-  // Cererile respinse/anulate nu influențează soldul și rămân neatinse.
-  if (!ACTIVE_STATUSES.includes(leave.status)) {
-    return null;
-  }
-
-  // Doar cererile create înainte de corecție au datele decalate.
+  // Doar cererile create înainte de corecție au datele decalate (orice status).
   const shifted = leave.createdAt < before;
   const newStartDate = shifted ? addDaysUTC(leave.startDate, 1) : leave.startDate;
   const newEndDate = shifted ? addDaysUTC(leave.endDate, 1) : leave.endDate;
-  const newWorkingDays = calculateWorkingDays(newStartDate, newEndDate);
 
+  // Respinse/anulate: nu influențează soldul, deci se corectează doar perioada
+  // afișată; workingDays rămâne cel salvat, soldul nu se atinge.
+  if (!isActive(leave)) {
+    if (!shifted) {
+      return null;
+    }
+    return {
+      leave,
+      shifted,
+      datesOnly: true,
+      newStartDate,
+      newEndDate,
+      newWorkingDays: leave.workingDays,
+      balanceDelta: 0,
+    };
+  }
+
+  const newWorkingDays = calculateWorkingDays(newStartDate, newEndDate);
   if (!shifted && newWorkingDays === leave.workingDays) {
     return null;
   }
@@ -127,6 +157,7 @@ function planChange(leave: LeaveRow, before: Date): Change | null {
   return {
     leave,
     shifted,
+    datesOnly: false,
     newStartDate,
     newEndDate,
     newWorkingDays,
@@ -215,6 +246,7 @@ function printTable(changes: Change[], usernames: Map<string, string>) {
     "Cerere",
     "Utilizator",
     "Status",
+    "Reparație",
     "Creată (UTC)",
     "Perioadă veche",
     "Perioadă nouă",
@@ -225,6 +257,7 @@ function printTable(changes: Change[], usernames: Map<string, string>) {
     c.leave.id,
     usernames.get(c.leave.userId) ?? c.leave.userId,
     c.leave.status,
+    c.datesOnly ? "doar date" : c.shifted ? "date + zile" : "doar zile",
     c.leave.createdAt.toISOString().slice(0, 16).replace("T", " "),
     period(c.leave.startDate, c.leave.endDate),
     c.shifted ? period(c.newStartDate, c.newEndDate) : "(neschimbată)",
@@ -247,6 +280,12 @@ function printTable(changes: Change[], usernames: Map<string, string>) {
   for (const row of rows) {
     console.log(line(row));
   }
+  if (changes.some((c) => c.datesOnly)) {
+    console.log("");
+    console.log(
+      "„doar date” = cerere respinsă/anulată: se decalează doar perioada; zilele lucrătoare și soldul rămân neschimbate."
+    );
+  }
 }
 
 async function applyForUser(userId: string, before: Date) {
@@ -257,7 +296,7 @@ async function applyForUser(userId: string, before: Date) {
       await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
 
       const leaves = await tx.leaveRequest.findMany({
-        where: { userId, status: { in: ACTIVE_STATUSES } },
+        where: { userId, ...repairScope(before) },
         select: LEAVE_SELECT,
       });
       const { changes } = await planForLeaves(tx, leaves, before);
@@ -356,10 +395,11 @@ async function main() {
   }
 
   const leaves = await prisma.leaveRequest.findMany({
-    where: { status: { in: ACTIVE_STATUSES } },
+    where: repairScope(before),
     select: LEAVE_SELECT,
     orderBy: [{ userId: "asc" }, { startDate: "asc" }],
   });
+  const activeLeaves = leaves.filter(isActive);
   const { changes, skipped } = await planForLeaves(prisma, leaves, before);
   const users = await prisma.user.findMany({
     select: { id: true, username: true, availableDays: true },
@@ -370,7 +410,7 @@ async function main() {
     `[Reparație] ${apply ? "APLICARE" : "RULARE DE PROBĂ (fără --apply nu se modifică nimic)"}`
   );
   console.log(
-    `[Reparație] Decalare +1 zi pentru cererile active create înainte de ${before.toISOString()}.`
+    `[Reparație] Decalare +1 zi pentru toate cererile create înainte de ${before.toISOString()} (la cele respinse/anulate doar datele).`
   );
   console.log("");
 
@@ -381,15 +421,18 @@ async function main() {
 
   const userIds = [...new Set(changes.map((c) => c.leave.userId))];
   const shifted = changes.filter((c) => c.shifted).length;
+  const datesOnly = changes.filter((c) => c.datesOnly).length;
   const recomputed = changes.filter(
     (c) => c.newWorkingDays !== c.leave.workingDays
   ).length;
   const totalDelta = changes.reduce((sum, c) => sum + c.balanceDelta, 0);
-  const zeroDays = changes.filter((c) => c.newWorkingDays < 1);
+  const zeroDays = changes.filter(
+    (c) => !c.datesOnly && c.newWorkingDays < 1
+  );
   const stalePdfs = changes.filter(
     (c) => APPROVED_STATUSES.includes(c.leave.status) && c.leave.pdfUrl
   );
-  const overlaps = findOverlaps(leaves, changes);
+  const overlaps = findOverlaps(activeLeaves, changes);
   const negativeBalances = users.flatMap((user) => {
     const delta = changes
       .filter((c) => c.leave.userId === user.id)
@@ -401,10 +444,14 @@ async function main() {
       : [];
   });
 
-  console.log(`Cereri active în baza de date: ${leaves.length}`);
+  console.log(`Cereri active în baza de date: ${activeLeaves.length}`);
+  console.log(
+    `Cereri respinse/anulate create înainte de --before: ${leaves.length - activeLeaves.length}`
+  );
   console.log(`Deja reparate (sărite): ${skipped}`);
   console.log(`De modificat: ${changes.length} (utilizatori: ${userIds.length})`);
   console.log(`  - decalate cu +1 zi: ${shifted}`);
+  console.log(`    din care respinse/anulate (doar datele): ${datesOnly}`);
   console.log(`  - cu zile lucrătoare recalculate: ${recomputed}`);
   console.log(`  - ajustare totală a soldurilor: ${signed(totalDelta)} zile`);
   if (zeroDays.length > 0) {
