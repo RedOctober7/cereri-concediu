@@ -16,15 +16,18 @@ export default function RapoartePage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `situatie-zile-${new Date().getFullYear()}.xlsx`;
+      // Numele vine de la server (anul curent în România), cu un nume de rezervă.
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const match = /filename="([^"]+)"/.exec(disposition);
+      a.download = match?.[1] ?? 'situatie-zile.xlsx';
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
       toast.success('Raport descărcat cu succes!');
-    } catch (err: any) {
-      toast.error(err.message || 'A apărut o eroare.');
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'A apărut o eroare.');
     } finally {
       setLoading(false);
     }

@@ -262,6 +262,8 @@ export function LeaveRequestForm({
             !hasCompleteRange ||
             submitting ||
             loadingPreview ||
+            // Verificarea perioadei încă nu a răspuns (debounce sau cerere în curs).
+            (!preview && !previewError) ||
             previewError?.blocksSubmit === true
           }
           onClick={() => void onSubmit()}
