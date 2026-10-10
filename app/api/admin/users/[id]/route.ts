@@ -4,6 +4,11 @@ import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
 import { userUpdateSchema } from "@/lib/validators";
 import { createAuditLog } from "@/lib/audit/log";
+import {
+  YEARLY_ROLLOVER_ACTION,
+  openingBalanceYear,
+  parseRolloverDetails,
+} from "@/lib/leaves/rollover";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -50,11 +55,42 @@ export async function PATCH(request: Request, context: RouteContext) {
       let availableDaysDelta = 0;
       if (newInitialLeaveDays !== undefined) {
         await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${id} FOR UPDATE`;
-        before = await tx.user.findUniqueOrThrow({
+        const current = await tx.user.findUniqueOrThrow({
           where: { id },
-          select: { initialLeaveDays: true, availableDays: true },
+          select: {
+            initialLeaveDays: true,
+            availableDays: true,
+            hireDate: true,
+            createdAt: true,
+          },
         });
-        availableDaysDelta = newInitialLeaveDays - before.initialLeaveDays;
+        before = current;
+        // Rotunjit la 2 zecimale, ca în rollover: soldurile sunt fracționare
+        // (acumulare lunară), iar diferența brută lasă zgomot de virgulă mobilă.
+        availableDaysDelta =
+          Math.round((newInitialLeaveDays - current.initialLeaveDays) * 100) / 100;
+
+        if (availableDaysDelta !== 0) {
+          // Soldul inițial e atribuit anului de deschidere. Dacă rollover-ul anual a
+          // procesat deja acel an, zilele adăugate acum nu ar mai expira niciodată
+          // (anul e marcat ca procesat), iar cele scoase ar fi scăzute de două ori.
+          const openingYear = openingBalanceYear(current.hireDate, current.createdAt);
+          const rollovers = await tx.auditLog.findMany({
+            where: {
+              action: YEARLY_ROLLOVER_ACTION,
+              entityType: "User",
+              entityId: id,
+            },
+            select: { details: true },
+          });
+          const alreadyProcessed = rollovers.some((row) => {
+            const parsedRow = parseRolloverDetails(row.details);
+            return parsedRow !== null && parsedRow.year >= openingYear;
+          });
+          if (alreadyProcessed) {
+            throw new Error("OPENING_BALANCE_ALREADY_ROLLED_OVER");
+          }
+        }
       }
 
       const updated = await tx.user.update({
@@ -77,8 +113,13 @@ export async function PATCH(request: Request, context: RouteContext) {
           ...(newInitialLeaveDays !== undefined
             ? { initialLeaveDays: newInitialLeaveDays }
             : {}),
-          ...(availableDaysDelta !== 0
-            ? { availableDays: { increment: availableDaysDelta } }
+          // Rândul e blocat (FOR UPDATE), deci putem scrie direct soldul nou,
+          // rotunjit: un increment ar lăsa zgomot (7.3 + 0.1 = 7.3999999999999995).
+          ...(before && availableDaysDelta !== 0
+            ? {
+                availableDays:
+                  Math.round((before.availableDays + availableDaysDelta) * 100) / 100,
+              }
             : {}),
           ...(parsed.data.active !== undefined ? { active: parsed.data.active } : {}),
           ...(passwordHash ? { passwordHash } : {}),
@@ -122,6 +163,18 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return NextResponse.json({ data: updated });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "OPENING_BALANCE_ALREADY_ROLLED_OVER"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Soldul inițial nu mai poate fi modificat: zilele din anul respectiv au fost deja procesate la reportarea anuală.",
+        },
+        { status: 409 }
+      );
+    }
     console.error("[Users] Eroare actualizare:", error);
     return NextResponse.json(
       {
