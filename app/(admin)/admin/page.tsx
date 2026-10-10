@@ -191,7 +191,7 @@ function EmptyText({ children }: { children: React.ReactNode }) {
 function MoreLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <CardFooter className="justify-end">
-      <Link href={href} className={buttonVariants({ variant: "ghost", size: "sm" })}>
+      <Link href={href} className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}>
         {children}
         <ArrowRight data-icon="inline-end" />
       </Link>

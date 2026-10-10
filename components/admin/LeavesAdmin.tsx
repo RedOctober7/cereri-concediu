@@ -580,7 +580,7 @@ export function LeavesAdmin({
                   href={pagination.prevHref}
                   scroll={false}
                   rel="prev"
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
                 >
                   <ChevronLeft data-icon="inline-start" />
                   Anterioară
@@ -599,7 +599,7 @@ export function LeavesAdmin({
                   href={pagination.nextHref}
                   scroll={false}
                   rel="next"
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
                 >
                   Următoarea
                   <ChevronRight data-icon="inline-end" />

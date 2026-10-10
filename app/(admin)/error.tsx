@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { RotateCw, TriangleAlert } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 
 /** Eroare într-o pagină de admin: meniul rămâne, conținutul se poate reîncărca. */
@@ -37,7 +38,7 @@ export default function AdminError({
           <RotateCw />
           Reîncearcă
         </Button>
-        <Link href="/admin" className={buttonVariants({ variant: "outline", className: "h-9 px-3" })}>
+        <Link href="/admin" className={cn(buttonVariants({ variant: "outline" }), "h-9 px-3")}>
           Înapoi la panou
         </Link>
       </div>
