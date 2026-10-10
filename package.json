@@ -7,6 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
@@ -59,11 +61,13 @@
     "shadcn": "^4.8.1",
     "tailwindcss": "^4",
     "tsx": "^4.22.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "exceljs": {
       "uuid": "^11.1.1"
-    }
+    },
+    "vite": "^7.3.7"
   }
 }
