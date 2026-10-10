@@ -4,6 +4,12 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { AdminShell } from "@/components/layout/AdminShell";
 
+// Tot segmentul /admin depinde de sesiune și de baza de date: îl declarăm dinamic,
+// ca `next build` să nu încerce să-l prerandeze (și să interogheze DB-ul). Fără
+// Cache Components acesta e modul suportat; cu `cacheComponents` activ opțiunea
+// dispare (paginile sunt oricum dinamice) și trebuie ștearsă.
+export const dynamic = "force-dynamic";
+
 export default async function AdminLayout({
   children,
 }: {

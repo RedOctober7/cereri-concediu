@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { formatInTimeZone } from "date-fns-tz";
@@ -15,6 +16,7 @@ import { prisma } from "@/lib/db";
 import { APP_TIME_ZONE, addDaysUTC, todayInBucharest } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -197,8 +199,7 @@ function MoreLink({ href, children }: { href: string; children: React.ReactNode 
   );
 }
 
-export default async function AdminDashboardPage() {
-  const session = await getServerSession(authOptions);
+async function DashboardContent() {
   const today = todayInBucharest();
   const horizon = addDaysUTC(today, UPCOMING_DAYS);
 
@@ -325,31 +326,11 @@ export default async function AdminDashboardPage() {
   });
   const activeWorkPoints = workPoints.filter((wp) => wp.active).length;
 
-  const weekdayLabel = formatInTimeZone(new Date(), APP_TIME_ZONE, "EEEE, d MMMM yyyy", {
-    locale: ro,
-  });
-  const todayLabel = weekdayLabel.charAt(0).toUpperCase() + weekdayLabel.slice(1);
   const workPointName = (leave: { user: { workPoint: { name: string } | null } }) =>
     leave.user.workPoint?.name ?? "Fără punct de lucru";
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Panou</h1>
-          <p className="text-muted-foreground">
-            {todayLabel}
-            {session?.user?.name ? ` · Bun venit, ${session.user.name}` : null}
-          </p>
-        </div>
-        {pendingCount > 0 ? (
-          <Link href="/admin/cereri" className={cn(buttonVariants(), "h-10 gap-2 px-3")}>
-            <ClipboardList />
-            Vezi cererile în așteptare
-          </Link>
-        ) : null}
-      </div>
-
+    <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label="Cereri în așteptare"
@@ -555,6 +536,74 @@ export default async function AdminDashboardPage() {
           )}
         </CardContent>
       </Card>
+    </>
+  );
+}
+
+function SkeletonCard({ rows }: { rows: number }) {
+  return (
+    <div className="space-y-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-3.5 w-2/3" />
+      </div>
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="flex items-center gap-3">
+          <Skeleton className="size-8 rounded-full" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-3.5 w-1/3" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true">
+      <p role="status" className="sr-only">
+        Se încarcă panoul...
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+            <Skeleton className="h-3.5 w-1/2" />
+            <Skeleton className="h-8 w-14" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SkeletonCard rows={4} />
+        <SkeletonCard rows={4} />
+      </div>
+    </div>
+  );
+}
+
+export default async function AdminDashboardPage() {
+  const session = await getServerSession(authOptions);
+  const weekdayLabel = formatInTimeZone(new Date(), APP_TIME_ZONE, "EEEE, d MMMM yyyy", {
+    locale: ro,
+  });
+  const todayLabel = weekdayLabel.charAt(0).toUpperCase() + weekdayLabel.slice(1);
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Panou</h1>
+        <p className="text-muted-foreground">
+          {todayLabel}
+          {session?.user?.name ? ` · Bun venit, ${session.user.name}` : null}
+        </p>
+      </div>
+      {/* Antetul apare imediat; datele vin în flux, cu schelet până atunci. */}
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardContent />
+      </Suspense>
+    </div>
+  );
+}
+
