@@ -110,51 +110,61 @@ export async function POST(
       }
     );
 
-    const pdfBuffer = await generateLeavePDF({
-      request: {
-        id: updatedRequest.id,
+    // Cererea e deja aprobată și zilele scăzute (commit-ul de mai sus). Dacă PDF-ul,
+    // încărcarea sau emailul eșuează, nu răspundem cu eroare: o reîncercare ar primi
+    // „Cererea nu mai este în așteptare”, iar adminul ar crede că nu s-a aprobat.
+    let sideEffectsError: string | null = null;
+    try {
+      const pdfBuffer = await generateLeavePDF({
+        request: {
+          id: updatedRequest.id,
+          startDate: updatedRequest.startDate,
+          endDate: updatedRequest.endDate,
+          workingDays: updatedRequest.workingDays,
+          approvedAt: updatedRequest.approvedAt,
+          createdAt: updatedRequest.createdAt,
+        },
+        user: {
+          firstName: leaveRequest.user.firstName,
+          lastName: leaveRequest.user.lastName,
+          jobTitle: leaveRequest.user.jobTitle,
+          employer: leaveRequest.user.employer,
+          workPoint: leaveRequest.user.workPoint,
+        },
+      });
+
+      const pdfPath = await uploadPDF(
+        leaveRequest.userId,
+        updatedRequest.id,
+        pdfBuffer
+      );
+
+      await prisma.leaveRequest.update({
+        where: { id },
+        data: { pdfUrl: pdfPath },
+      });
+
+      const updatedUser = await prisma.user.findUnique({
+        where: { id: leaveRequest.userId },
+      });
+
+      await sendLeaveApprovedEmail({
+        to: leaveRequest.user.email,
+        firstName: leaveRequest.user.firstName,
+        lastName: leaveRequest.user.lastName,
         startDate: updatedRequest.startDate,
         endDate: updatedRequest.endDate,
         workingDays: updatedRequest.workingDays,
-        approvedAt: updatedRequest.approvedAt,
-        createdAt: updatedRequest.createdAt,
-      },
-      user: {
-        firstName: leaveRequest.user.firstName,
-        lastName: leaveRequest.user.lastName,
-        jobTitle: leaveRequest.user.jobTitle,
-        employer: leaveRequest.user.employer,
-        workPoint: leaveRequest.user.workPoint,
-      },
-    });
-
-    const pdfPath = await uploadPDF(
-      leaveRequest.userId,
-      updatedRequest.id,
-      pdfBuffer
-    );
-
-    await prisma.leaveRequest.update({
-      where: { id },
-      data: { pdfUrl: pdfPath },
-    });
-
-    const updatedUser = await prisma.user.findUnique({
-      where: { id: leaveRequest.userId },
-    });
-
-    await sendLeaveApprovedEmail({
-      to: leaveRequest.user.email,
-      firstName: leaveRequest.user.firstName,
-      lastName: leaveRequest.user.lastName,
-      startDate: updatedRequest.startDate,
-      endDate: updatedRequest.endDate,
-      workingDays: updatedRequest.workingDays,
-      availableDaysAfter: updatedUser?.availableDays || 0,
-      approvedByAdmin: true,
-      pdfBuffer,
-      requestId: updatedRequest.id,
-    });
+        availableDaysAfter: updatedUser?.availableDays || 0,
+        approvedByAdmin: true,
+        pdfBuffer,
+        requestId: updatedRequest.id,
+      });
+    } catch (error) {
+      console.error('[Approve Leave] PDF/email după aprobare:', error);
+      sideEffectsError =
+        'Cererea a fost aprobată, dar PDF-ul sau emailul către angajat nu a putut fi trimis.';
+    }
 
     await createAuditLog({
       userId: session.user.id,
@@ -164,10 +174,13 @@ export async function POST(
       details: {
         workingDays: updatedRequest.workingDays,
         storedWorkingDays,
+        ...(sideEffectsError ? { sideEffectsFailed: true } : {}),
       },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json(
+      sideEffectsError ? { success: true, warning: sideEffectsError } : { success: true }
+    );
   } catch (error) {
     if (error instanceof Error) {
       if (error.message === 'LEAVE_NOT_PENDING') {

@@ -61,16 +61,20 @@ export function LeavesAdmin({ cereri }: { cereri: LeaveRequest[] }) {
       setList((prev) =>
         prev.map((r) => (r.id === id ? { ...r, status: 'APPROVED_ADMIN' } : r))
       );
-      toast.success('Cererea a fost aprobată și emailul trimis.');
-    } catch (err: any) {
-      toast.error(err.message || 'A apărut o eroare.');
+      if (data.warning) {
+        toast.warning(data.warning);
+      } else {
+        toast.success('Cererea a fost aprobată și emailul trimis.');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'A apărut o eroare.');
     } finally {
       setLoading(null);
     }
   }
 
   async function handleReject(id: string) {
-    if (rejectReason.length < 10) {
+    if (rejectReason.trim().length < 10) {
       toast.error('Motivul trebuie să aibă minim 10 caractere.');
       return;
     }
@@ -88,9 +92,13 @@ export function LeavesAdmin({ cereri }: { cereri: LeaveRequest[] }) {
       );
       setRejectId(null);
       setRejectReason('');
-      toast.success('Cererea a fost respinsă.');
-    } catch (err: any) {
-      toast.error(err.message || 'A apărut o eroare.');
+      if (data.warning) {
+        toast.warning(data.warning);
+      } else {
+        toast.success('Cererea a fost respinsă.');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'A apărut o eroare.');
     } finally {
       setLoading(null);
     }

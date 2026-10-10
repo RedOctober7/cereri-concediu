@@ -6,7 +6,10 @@ import { createAuditLog } from '@/lib/audit/log';
 import { z } from 'zod';
 
 const rejectSchema = z.object({
-  rejectionReason: z.string().min(10, 'Motivul trebuie să aibă minim 10 caractere'),
+  rejectionReason: z
+    .string({ error: 'Motivul respingerii este obligatoriu.' })
+    .trim()
+    .min(10, 'Motivul trebuie să aibă minim 10 caractere.'),
 });
 
 const NOT_PENDING_MESSAGE = 'Cererea nu mai este în așteptare.';
@@ -23,8 +26,15 @@ export async function POST(
     }
     const { session } = auth;
 
-    const body = await req.json();
-    const { rejectionReason } = rejectSchema.parse(body);
+    const body = await req.json().catch(() => null);
+    const parsed = rejectSchema.safeParse(body ?? {});
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? 'Date invalide.' },
+        { status: 400 }
+      );
+    }
+    const { rejectionReason } = parsed.data;
 
     const leaveRequest = await prisma.leaveRequest.findUnique({
       where: { id },
@@ -53,25 +63,34 @@ export async function POST(
       return NextResponse.json({ error: NOT_PENDING_MESSAGE }, { status: 400 });
     }
 
-    await sendLeaveRejectedEmail({
-      to: leaveRequest.user.email,
-      firstName: leaveRequest.user.firstName,
-      lastName: leaveRequest.user.lastName,
-      startDate: leaveRequest.startDate,
-      endDate: leaveRequest.endDate,
-      workingDays: leaveRequest.workingDays,
-      rejectionReason,
-    });
+    // Cererea e deja respinsă; un email eșuat nu trebuie să pară o respingere eșuată.
+    let emailError: string | null = null;
+    try {
+      await sendLeaveRejectedEmail({
+        to: leaveRequest.user.email,
+        firstName: leaveRequest.user.firstName,
+        lastName: leaveRequest.user.lastName,
+        startDate: leaveRequest.startDate,
+        endDate: leaveRequest.endDate,
+        workingDays: leaveRequest.workingDays,
+        rejectionReason,
+      });
+    } catch (error) {
+      console.error('[Reject Leave] email după respingere:', error);
+      emailError = 'Cererea a fost respinsă, dar emailul către angajat nu a putut fi trimis.';
+    }
 
     await createAuditLog({
       userId: session.user.id,
       action: 'LEAVE_REJECTED',
       entityType: 'LeaveRequest',
       entityId: id,
-      details: { rejectionReason },
+      details: { rejectionReason, ...(emailError ? { emailFailed: true } : {}) },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json(
+      emailError ? { success: true, warning: emailError } : { success: true }
+    );
   } catch (error) {
     console.error('[Reject Leave]', error);
     return NextResponse.json(
