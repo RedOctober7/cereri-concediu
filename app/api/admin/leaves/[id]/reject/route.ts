@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireAdminSession } from '@/lib/api-auth';
 import { prisma } from '@/lib/db';
 import { sendLeaveRejectedEmail } from '@/lib/emails/send';
 import { createAuditLog } from '@/lib/audit/log';
@@ -18,10 +17,11 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const session = await getServerSession(authOptions);
-    if (!session || session.user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Neautorizat' }, { status: 401 });
+    const auth = await requireAdminSession();
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const { session } = auth;
 
     const body = await req.json();
     const { rejectionReason } = rejectSchema.parse(body);

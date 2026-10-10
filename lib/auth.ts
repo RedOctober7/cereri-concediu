@@ -107,17 +107,26 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
-      const dbUser = token.id
-        ? await prisma.user.findUnique({
-            where: { id: token.id },
-            select: {
-              role: true,
-              mustChangePassword: true,
-              active: true,
-              deletedAt: true,
-            },
-          })
-        : null;
+      let dbUser;
+      try {
+        dbUser = token.id
+          ? await prisma.user.findUnique({
+              where: { id: token.id },
+              select: {
+                role: true,
+                mustChangePassword: true,
+                active: true,
+                deletedAt: true,
+              },
+            })
+          : null;
+      } catch (error) {
+        // O problemă temporară cu baza de date nu trebuie să delogheze pe toată
+        // lumea: păstrăm token-ul așa cum e (checkedAt neschimbat), deci
+        // revalidarea se reîncearcă la următoarea citire a sesiunii.
+        console.error("[Auth] Revalidarea sesiunii a eșuat:", error);
+        return token;
+      }
 
       if (!dbUser || !dbUser.active || dbUser.deletedAt) {
         // O eroare aruncată aici face ca next-auth să nu mai întoarcă sesiunea
