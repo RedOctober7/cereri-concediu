@@ -257,7 +257,13 @@ function printTable(changes: Change[], usernames: Map<string, string>) {
     c.leave.id,
     usernames.get(c.leave.userId) ?? c.leave.userId,
     c.leave.status,
-    c.datesOnly ? "doar date" : c.shifted ? "date + zile" : "doar zile",
+    c.datesOnly
+      ? "doar date"
+      : !c.shifted
+        ? "doar zile"
+        : c.newWorkingDays !== c.leave.workingDays
+          ? "date + zile"
+          : "date",
     c.leave.createdAt.toISOString().slice(0, 16).replace("T", " "),
     period(c.leave.startDate, c.leave.endDate),
     c.shifted ? period(c.newStartDate, c.newEndDate) : "(neschimbată)",
