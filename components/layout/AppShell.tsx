@@ -238,22 +238,24 @@ export function AppShell({
         Sari la conținut
       </a>
 
-      {/* Bara laterală (desktop) */}
-      <aside className="sticky top-0 hidden h-svh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
-        <div className="flex h-16 items-center border-b border-sidebar-border px-4">
-          <Brand appName={appName} subtitle={subtitle} href={homeHref} />
-        </div>
-        <nav aria-label={navLabel} className="flex-1 overflow-y-auto p-3">
-          <p className="mb-2 px-3 text-xs font-semibold tracking-wider text-sidebar-foreground/60 uppercase">
-            {navLabel}
-          </p>
-          <NavLinks items={navItems} />
-        </nav>
-        <div className="flex items-center gap-1 border-t border-sidebar-border p-3">
-          <UserMenu name={user.name} email={user.email} links={userLinks} variant="sidebar" />
-          <ThemeToggle />
-        </div>
-      </aside>
+      {/* Bara laterală (desktop): fundalul ține toată înălțimea, conținutul rămâne fix la derulare. */}
+      <div className="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar md:block">
+        <aside className="sticky top-0 flex h-svh flex-col text-sidebar-foreground">
+          <div className="flex h-16 items-center border-b border-sidebar-border px-4">
+            <Brand appName={appName} subtitle={subtitle} href={homeHref} />
+          </div>
+          <nav aria-label={navLabel} className="flex-1 overflow-y-auto p-3">
+            <p className="mb-2 px-3 text-xs font-semibold tracking-wider text-sidebar-foreground/60 uppercase">
+              {navLabel}
+            </p>
+            <NavLinks items={navItems} />
+          </nav>
+          <div className="flex items-center gap-1 border-t border-sidebar-border p-3">
+            <UserMenu name={user.name} email={user.email} links={userLinks} variant="sidebar" />
+            <ThemeToggle />
+          </div>
+        </aside>
+      </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Antet (mobil) */}
