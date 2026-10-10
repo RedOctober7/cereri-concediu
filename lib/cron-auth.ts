@@ -30,7 +30,7 @@ export function verifyCronRequest(req: Request): NextResponse | null {
       `[Cron] CRON_SECRET lipsește sau are mai puțin de ${MIN_SECRET_LENGTH} caractere; cererea a fost respinsă.`
     );
     return NextResponse.json(
-      { error: "Configurare server invalidă." },
+      { error: "Serverul nu este configurat corect." },
       { status: 500 }
     );
   }

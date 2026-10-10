@@ -27,8 +27,10 @@ Generează secrete:
 
 ```bash
 openssl rand -base64 32   # NEXTAUTH_SECRET
-openssl rand -hex 32      # CRON_SECRET (fazele următoare)
+openssl rand -hex 32      # CRON_SECRET
 ```
+
+Ambele joburi cron (`/api/cron/monthly-accrual` și `/api/cron/yearly-rollover`) răspund cu eroare dacă `CRON_SECRET` nu are cel puțin 16 caractere, atât în `.env.local`, cât și în variabilele de mediu din Vercel.
 
 ### 2. Bază de date Supabase
 
