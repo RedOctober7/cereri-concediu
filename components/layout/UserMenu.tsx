@@ -77,6 +77,7 @@ export function UserMenu({
     variant === "sidebar" ? (
       <button
         type="button"
+        aria-label={`Contul meu: ${name}`}
         className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 text-left outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring aria-expanded:bg-sidebar-accent"
       />
     ) : (

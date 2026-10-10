@@ -126,17 +126,31 @@ function ViolationHint({ count }: { count: number }) {
   );
 }
 
-function TabPendingDot() {
+/** Totalul din tab; pulsează cât timp se încarcă tabul apăsat (fără să mute layout-ul). */
+function TabCount({ count, active }: { count: number; active: boolean }) {
   const { pending } = useLinkStatus();
   return (
-    <Loader2
-      aria-hidden="true"
-      className={cn("size-3.5 animate-spin transition-opacity", pending ? "opacity-100" : "w-0 opacity-0")}
-    />
+    <span
+      className={cn(
+        "min-w-5 rounded-full px-1.5 py-0.5 text-center text-xs leading-none tabular-nums",
+        active ? "bg-primary text-primary-foreground" : "bg-foreground/5 dark:bg-foreground/10",
+        pending && "animate-pulse"
+      )}
+    >
+      {count}
+    </span>
   );
 }
 
-function StatusTabs({ tabs, active }: { tabs: StatusTab[]; active: StatusFilter }) {
+function StatusTabs({
+  tabs,
+  active,
+  onTabClick,
+}: {
+  tabs: StatusTab[];
+  active: StatusFilter;
+  onTabClick: (value: StatusFilter, event: React.MouseEvent<HTMLAnchorElement>) => void;
+}) {
   return (
     <nav aria-label="Filtrează după status" className="-mx-1 overflow-x-auto px-1 pb-1">
       <ul className="inline-flex min-w-max items-center gap-1 rounded-lg bg-muted p-1">
@@ -148,6 +162,7 @@ function StatusTabs({ tabs, active }: { tabs: StatusTab[]; active: StatusFilter 
                 href={tab.href}
                 scroll={false}
                 aria-current={isActive ? "page" : undefined}
+                onClick={(event) => onTabClick(tab.value, event)}
                 className={cn(
                   "flex h-8 items-center gap-1.5 rounded-md px-3 text-sm whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
                   isActive
@@ -156,15 +171,7 @@ function StatusTabs({ tabs, active }: { tabs: StatusTab[]; active: StatusFilter 
                 )}
               >
                 {tab.label}
-                <span
-                  className={cn(
-                    "min-w-5 rounded-full px-1.5 py-0.5 text-center text-xs leading-none tabular-nums",
-                    isActive ? "bg-primary text-primary-foreground" : "bg-foreground/5 dark:bg-foreground/10"
-                  )}
-                >
-                  {tab.count}
-                </span>
-                <TabPendingDot />
+                <TabCount count={tab.count} active={isActive} />
               </Link>
             </li>
           );
@@ -236,8 +243,15 @@ export function LeavesAdmin({
     });
   }
 
+  function cancelPendingSearch(): boolean {
+    if (debounceRef.current === null) return false;
+    clearTimeout(debounceRef.current);
+    debounceRef.current = null;
+    return true;
+  }
+
   function applySearch(value: string) {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    cancelPendingSearch();
     const q = value.trim();
     if (q === requestedQ) return;
     setRequestedQ(q);
@@ -246,12 +260,29 @@ export function LeavesAdmin({
 
   function onSearchChange(value: string) {
     setSearch(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => applySearch(value), SEARCH_DEBOUNCE_MS);
+    cancelPendingSearch();
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      applySearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  /** Textul tastat încă netrimis intră în navigarea următoare (tab, punct de lucru). */
+  function takeSearch(): string {
+    cancelPendingSearch();
+    const q = search.trim();
+    setRequestedQ(q);
+    return q;
+  }
+
+  function onTabClick(value: StatusFilter, event: React.MouseEvent<HTMLAnchorElement>) {
+    if (debounceRef.current === null) return;
+    event.preventDefault();
+    navigate({ status: value, q: takeSearch() });
   }
 
   function clearFilters() {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    cancelPendingSearch();
     setSearch("");
     setRequestedQ("");
     navigate({ q: "", wp: "" });
@@ -332,7 +363,7 @@ export function LeavesAdmin({
           size={size}
           disabled={busy}
           onClick={() => openReject(row)}
-          aria-label={`Respinge cererea lui ${row.employeeName}, ${row.period}`}
+          aria-label={`Respinge cererea: ${row.employeeName}, ${row.period}`}
           className={size === "default" ? "h-10 flex-1" : undefined}
         >
           <X />
@@ -342,7 +373,7 @@ export function LeavesAdmin({
           size={size}
           disabled={busy}
           onClick={() => openApprove(row)}
-          aria-label={`Aprobă cererea lui ${row.employeeName}, ${row.period}`}
+          aria-label={`Aprobă cererea: ${row.employeeName}, ${row.period}`}
           className={size === "default" ? "h-10 flex-1" : undefined}
         >
           <Check />
@@ -375,7 +406,7 @@ export function LeavesAdmin({
     <>
       <Card className="gap-0 py-0">
         <div className="space-y-3 border-b p-4">
-          <StatusTabs tabs={tabs} active={query.status} />
+          <StatusTabs tabs={tabs} active={query.status} onTabClick={onTabClick} />
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <form
               role="search"
@@ -425,7 +456,7 @@ export function LeavesAdmin({
               <NativeSelect
                 id="cereri-punct"
                 value={query.wp}
-                onChange={(event) => navigate({ wp: event.target.value })}
+                onChange={(event) => navigate({ wp: event.target.value, q: takeSearch() })}
                 className="h-9"
               >
                 <option value="">Toate punctele de lucru</option>
@@ -456,7 +487,7 @@ export function LeavesAdmin({
         </div>
 
         <p className="sr-only" aria-live="polite">
-          {requestsLabel(pagination.total)} găsite.
+          {requestsLabel(pagination.total)} {pagination.total === 1 ? "găsită" : "găsite"}.
         </p>
 
         <CardContent
@@ -704,8 +735,8 @@ export function LeavesAdmin({
                 <AlertDialogTitle>Aprobi cererea?</AlertDialogTitle>
                 <AlertDialogDescription>
                   {approveRow.employeeName} · {approveRow.period} ·{" "}
-                  {workingDaysLabel(approveRow.workingDays)}. Zilele se scad din soldul
-                  angajatului, iar el primește emailul de confirmare cu cererea în PDF.
+                  {workingDaysLabel(approveRow.workingDays)}. Zilele se scad din sold, iar
+                  angajatul primește pe email confirmarea, cu cererea în PDF.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
