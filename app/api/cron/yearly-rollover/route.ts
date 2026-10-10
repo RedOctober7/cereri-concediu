@@ -112,6 +112,19 @@ export async function GET(req: NextRequest) {
           select: { details: true },
         });
 
+        const entitlements = userEntitlements(user, accruals);
+        const alreadyExpired = rolloverLogs
+          .map((log) => parseRolloverDetails(log.details))
+          .filter((entry): entry is YearlyDays => entry !== null);
+        const years = yearsToExpire(
+          entitlements,
+          alreadyExpired.map((entry) => entry.year),
+          latestExpired
+        );
+        if (years.length === 0) {
+          return [];
+        }
+
         const pendingLeaves = await tx.leaveRequest.findMany({
           where: {
             userId: id,
@@ -121,14 +134,26 @@ export async function GET(req: NextRequest) {
           select: { startDate: true, workingDays: true },
         });
 
+        // Concediul aprobat care începe după termenul unui an nu a putut folosi zilele
+        // acelui an (expiraseră deja), deși e scăzut din soldul curent: planRollover îl
+        // adună înapoi, ca nici o rulare întârziată, nici un concediu aprobat în avans să
+        // nu păstreze zile care trebuiau să expire.
+        const approvedLeaves = await tx.leaveRequest.findMany({
+          where: {
+            userId: id,
+            status: { in: [LeaveStatus.APPROVED_AUTO, LeaveStatus.APPROVED_ADMIN] },
+            startDate: { gte: expiryDeadline(years[0]) },
+          },
+          select: { startDate: true, workingDays: true },
+        });
+
         const planned = planRollover({
           latestExpired,
           availableDays: user.availableDays,
-          entitlements: userEntitlements(user, accruals),
-          alreadyExpired: rolloverLogs
-            .map((log) => parseRolloverDetails(log.details))
-            .filter((entry): entry is YearlyDays => entry !== null),
+          entitlements,
+          alreadyExpired,
           pendingLeaves,
+          approvedLeaves,
         });
 
         // Un rând de audit pe an expirat, în aceeași tranzacție cu scăderea din sold.

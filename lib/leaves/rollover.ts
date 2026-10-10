@@ -49,8 +49,18 @@ export function userEntitlements(
   ];
 }
 
+/**
+ * O cerere de concediu: data de început (`@db.Date`) și zilele lucrătoare. Față de un
+ * termen de expirare contează doar data de început: o cerere care începe în termen și
+ * se termină după el contează integral ca efectuată în termen.
+ */
+export type LeaveDays = { startDate: Date; workingDays: number };
+
 /** O cerere PENDING_ADMIN: zilele ei nu sunt încă scăzute din sold. */
-export type PendingLeave = { startDate: Date; workingDays: number };
+export type PendingLeave = LeaveDays;
+
+/** O cerere aprobată (APPROVED_AUTO / APPROVED_ADMIN): zilele ei sunt deja scăzute din sold. */
+export type ApprovedLeave = LeaveDays;
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
@@ -115,6 +125,17 @@ export function pendingDaysBefore(pendingLeaves: PendingLeave[], deadline: Date)
   return total;
 }
 
+/** Zilele din cererile aprobate care încep la `deadline` sau după. */
+export function approvedDaysFrom(approvedLeaves: ApprovedLeave[], deadline: Date): number {
+  let total = 0;
+  for (const leave of approvedLeaves) {
+    if (leave.startDate >= deadline) {
+      total += leave.workingDays;
+    }
+  }
+  return total;
+}
+
 export type ExpiringDaysInput = {
   expiringYear: number;
   /** Soldul curent (User.availableDays). */
@@ -125,6 +146,13 @@ export type ExpiringDaysInput = {
    * așa că le tratăm ca deja consumate.
    */
   pendingDaysBeforeDeadline: number;
+  /**
+   * Zile din cereri aprobate care încep după termen (de la expiryDeadline inclusiv). Sunt
+   * deja scăzute din sold, dar nu puteau consuma zilele anului care expiră (expiraseră
+   * deja), așa că le adunăm înapoi: soldul devine cel de la termen, ca și cum expirarea
+   * ar fi rulat atunci.
+   */
+  approvedDaysFromDeadline: number;
   /** Zilele câștigate pe ani: rândurile LeaveAccrual plus soldul inițial atribuit unui an. */
   entitlements: YearlyDays[];
   /** Zilele deja expirate pe ani, din rândurile YEARLY_ROLLOVER existente. */
@@ -134,11 +162,14 @@ export type ExpiringDaysInput = {
 /**
  * Câte zile din `expiringYear` sunt încă neefectuate și trebuie scăzute acum.
  *
- * Zilele se consumă FIFO (întâi cele mai vechi), deci soldul curent este format din
- * cele mai noi zile câștigate. Ce depășește zilele anilor de după cel care expiră
- * provine din anul care expiră; pentru un an mai nou deja expirat (ex. procesat
- * înaintea unui an ratat) contează doar zilele câștigate minus cele deja expirate.
- * Limităm la zilele câștigate în anul care expiră și nu coborâm niciodată soldul sub 0.
+ * Zilele se consumă FIFO (întâi cele mai vechi), deci soldul de la termen este format din
+ * cele mai noi zile câștigate. Soldul de la termen este cel curent, minus cererile în
+ * așteptare care încep înainte de termen, plus cererile aprobate care încep după el
+ * (concediul de după termen nu a putut folosi zilele expirate, chiar dacă rularea a
+ * întârziat). Ce depășește zilele anilor de după cel care expiră provine din anul care
+ * expiră; pentru un an mai nou deja expirat (ex. procesat înaintea unui an ratat)
+ * contează doar zilele câștigate minus cele deja expirate.
+ * Limităm la zilele câștigate în anul care expiră și nu coborâm niciodată soldul curent sub 0.
  */
 export function computeExpiringDays(input: ExpiringDaysInput): number {
   const entitled = sumByYear(input.entitlements);
@@ -152,7 +183,8 @@ export function computeExpiringDays(input: ExpiringDaysInput): number {
   }
   const expiringYearDays = Math.max(entitled.get(input.expiringYear) ?? 0, 0);
 
-  const balance = input.availableDays - input.pendingDaysBeforeDeadline;
+  const balance =
+    input.availableDays - input.pendingDaysBeforeDeadline + input.approvedDaysFromDeadline;
   const unused = Math.min(Math.max(balance - laterDays, 0), expiringYearDays);
 
   return Math.min(round2(unused), Math.max(input.availableDays, 0));
@@ -166,6 +198,11 @@ export type RolloverInput = {
   alreadyExpired: YearlyDays[];
   /** Cererile PENDING_ADMIN care încep înainte de expiryDeadline(latestExpired). */
   pendingLeaves: PendingLeave[];
+  /**
+   * Cererile aprobate (APPROVED_AUTO, APPROVED_ADMIN) care încep la sau după
+   * expiryDeadline(cel mai vechi an din yearsToExpire).
+   */
+  approvedLeaves: ApprovedLeave[];
 };
 
 export type RolloverStep = {
@@ -177,23 +214,33 @@ export type RolloverStep = {
 
 /**
  * Expirările de aplicat acum, câte una pentru fiecare an din `yearsToExpire`, în ordine
- * crescătoare (FIFO): fiecare an se calculează din soldul rămas după anii mai vechi.
+ * crescătoare (FIFO): fiecare an se calculează din soldul rămas după anii mai vechi,
+ * readus la termenul lui (vezi computeExpiringDays): concediul luat după termen nu
+ * consumă zilele anului care expiră, chiar dacă a fost aprobat în avans sau cronul a
+ * întârziat.
  * Întoarce o listă goală dacă nu este nimic de făcut (rulare repetată).
  */
 export function planRollover(input: RolloverInput): RolloverStep[] {
-  const years = yearsToExpire(
-    input.entitlements,
-    input.alreadyExpired.map((entry) => entry.year),
-    input.latestExpired
-  );
+  const expiredYears = input.alreadyExpired.map((entry) => entry.year);
+  const years = yearsToExpire(input.entitlements, expiredYears, input.latestExpired);
   const steps: RolloverStep[] = [];
   let availableDays = input.availableDays;
 
   for (const year of years) {
+    // Un an mai nou expirat deja (în altă ordine, de codul vechi) a fost calculat cu
+    // zilele acestui an încă în sold, deci concediul de până la termenul lui a fost pus
+    // atunci pe seama acestui an. Ca aceleași zile să nu expire de două ori, adunăm
+    // înapoi doar concediul de după termenul celui mai nou astfel de an (în acest caz
+    // rar putem păstra zile în plus, dar nu expirăm mai multe decât trebuie).
+    const addBackYear = Math.max(year, ...expiredYears.filter((expired) => expired > year));
     const expiredDays = computeExpiringDays({
       expiringYear: year,
       availableDays,
       pendingDaysBeforeDeadline: pendingDaysBefore(input.pendingLeaves, expiryDeadline(year)),
+      approvedDaysFromDeadline: approvedDaysFrom(
+        input.approvedLeaves,
+        expiryDeadline(addBackYear)
+      ),
       entitlements: input.entitlements,
       alreadyExpired: input.alreadyExpired,
     });
