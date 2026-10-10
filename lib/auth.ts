@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { loginSchema } from "@/lib/validators";
-import { rateLimitAuth } from "@/lib/rate-limit";
+import { startAuthAttempt } from "@/lib/rate-limit";
 
 // Cât timp avem încredere în rolul și starea contului din JWT fără să le recitim
 // din baza de date. getServerSession (layout-uri, pagini, gărzi API) trece prin
@@ -34,8 +34,12 @@ export const authOptions: NextAuthOptions = {
           req.headers?.["x-real-ip"]?.toString() ??
           "unknown";
 
-        const allowed = await rateLimitAuth(ip);
-        if (!allowed) {
+        // Se numără doar încercările eșuate: pe utilizator + IP și, mai larg, pe IP.
+        const attempt = await startAuthAttempt(
+          typeof credentials?.username === "string" ? credentials.username : "",
+          ip
+        );
+        if (!attempt.allowed) {
           throw new Error(
             "Prea multe încercări de autentificare. Reîncearcă în 15 minute."
           );
@@ -66,6 +70,7 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        await attempt.succeeded();
         return {
           id: user.id,
           email: user.email,
