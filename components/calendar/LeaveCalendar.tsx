@@ -28,6 +28,11 @@ export function LeaveCalendar({
 }: LeaveCalendarProps) {
   const [meta, setMeta] = useState<CalendarMeta | null>(null);
   const [loading, setLoading] = useState(true);
+  const [month, setMonth] = useState(() => new Date(year, new Date().getMonth(), 1));
+  const today = useMemo(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +82,29 @@ export function LeaveCalendar({
     return format(date, "yyyy-MM-dd");
   }
 
+  // Luna afișată: cine lipsește (colegi de la același punct de lucru) și sărbătorile.
+  const monthPrefix = format(month, "yyyy-MM");
+  const absentInMonth = useMemo(() => {
+    const byName = new Map<string, string[]>();
+    meta?.colleagueDays
+      .filter((c) => c.date.startsWith(monthPrefix))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .forEach((c) =>
+        c.names.forEach((name) => byName.set(name, [...(byName.get(name) ?? []), c.date]))
+      );
+    return Array.from(byName.entries()).map(([name, dates]) => ({
+      name,
+      first: dates[0],
+      last: dates[dates.length - 1],
+    }));
+  }, [meta, monthPrefix]);
+  const holidaysInMonth = useMemo(
+    () => (meta?.holidays ?? []).filter((h) => h.date.startsWith(monthPrefix)),
+    [meta, monthPrefix]
+  );
+  const shortDay = (key: string) =>
+    format(new Date(`${key}T12:00:00`), "d MMM", { locale: ro });
+
   return (
     <div className="space-y-3">
       {loading ? (
@@ -88,9 +116,11 @@ export function LeaveCalendar({
         selected={selected}
         onSelect={onSelect}
         numberOfMonths={1}
-        defaultMonth={new Date(year, new Date().getMonth(), 1)}
-        onMonthChange={(month) => {
-          const newYear = month.getFullYear();
+        month={month}
+        disabled={{ before: today }}
+        onMonthChange={(next) => {
+          setMonth(next);
+          const newYear = next.getFullYear();
           if (newYear !== year) {
             onYearChange?.(newYear);
           }
@@ -115,14 +145,48 @@ export function LeaveCalendar({
           <span className="size-3 rounded bg-muted" /> Weekend
         </span>
         <span className="flex items-center gap-1">
-          <span className="size-3 rounded bg-red-100" /> Sărbătoare legală
+          <span className="size-3 rounded bg-red-100 dark:bg-red-950/50" /> Sărbătoare legală
         </span>
         <span className="flex items-center gap-1">
-          <span className="size-3 rounded bg-amber-100" /> Cerere proprie
+          <span className="size-3 rounded bg-amber-100 dark:bg-amber-950/50" /> Cerere proprie
         </span>
         <span className="flex items-center gap-1">
-          <span className="size-3 rounded bg-sky-100" /> Coleg în concediu
+          <span className="size-3 rounded bg-sky-100 dark:bg-sky-950/50" /> Coleg în concediu
         </span>
+      </div>
+      <div className="grid gap-3 border-t pt-3 text-sm sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <p className="font-medium">Cine lipsește în {format(month, "LLLL", { locale: ro })}</p>
+          {absentInMonth.length === 0 ? (
+            <p className="text-muted-foreground">Niciun coleg de la punctul tău de lucru.</p>
+          ) : (
+            <ul className="space-y-1">
+              {absentInMonth.map((a) => (
+                <li key={a.name} className="flex justify-between gap-2">
+                  <span>{a.name}</span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {a.first === a.last ? shortDay(a.first) : `${shortDay(a.first)} – ${shortDay(a.last)}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <p className="font-medium">Sărbători legale</p>
+          {holidaysInMonth.length === 0 ? (
+            <p className="text-muted-foreground">Nicio sărbătoare legală în această lună.</p>
+          ) : (
+            <ul className="space-y-1">
+              {holidaysInMonth.map((h) => (
+                <li key={h.date} className="flex justify-between gap-2">
+                  <span>{h.name}</span>
+                  <span className="text-muted-foreground tabular-nums">{shortDay(h.date)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

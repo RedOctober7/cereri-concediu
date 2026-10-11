@@ -8,6 +8,7 @@ import type { DateRange } from "react-day-picker";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { formatDays } from "@/components/admin/format";
 import { LeaveCalendar } from "@/components/calendar/LeaveCalendar";
 import { Button } from "@/components/ui/button";
 import {
@@ -195,7 +196,7 @@ export function LeaveRequestForm({
             <p className="text-sm">
               <span className="text-muted-foreground">Zile disponibile: </span>
               <strong>
-                {(preview?.availableDays ?? initialAvailableDays).toFixed(2)}
+                {formatDays(preview?.availableDays ?? initialAvailableDays)}
               </strong>
             </p>
 
@@ -280,7 +281,7 @@ export function LeaveRequestForm({
 
         <Link href="/dashboard">
           <Button variant="outline" className="w-full">
-            Înapoi la dashboard
+            Înapoi la panou
           </Button>
         </Link>
       </div>
