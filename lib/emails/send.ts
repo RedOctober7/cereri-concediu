@@ -3,15 +3,77 @@ import { render } from '@react-email/render';
 import { LeaveApprovedEmail } from './LeaveApprovedEmail';
 import { LeaveRejectedEmail } from './LeaveRejectedEmail';
 import { LeavePendingAdminEmail } from './LeavePendingAdminEmail';
-import { format } from 'date-fns';
-import { ro } from 'date-fns/locale';
+import { formatInTimeZone } from 'date-fns-tz';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const emailFrom = process.env.EMAIL_FROM || 'noreply@example.ro';
-const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+// Clientul Resend se creează la primul email, nu la importul modulului: fără
+// RESEND_API_KEY aplicația pornește și funcționează, doar că nu trimite emailuri
+// (constructorul Resend aruncă o eroare dacă lipsește cheia).
+let resendClient: Resend | null = null;
+let missingKeyWarned = false;
 
+function getResend(): Resend | null {
+  if (resendClient) {
+    return resendClient;
+  }
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) {
+    if (!missingKeyWarned) {
+      missingKeyWarned = true;
+      console.warn(
+        '[Email] RESEND_API_KEY lipsește: emailurile nu se trimit (aplicația funcționează în rest).'
+      );
+    }
+    return null;
+  }
+  resendClient = new Resend(apiKey);
+  return resendClient;
+}
+
+function emailFrom(): string {
+  return process.env.EMAIL_FROM?.trim() || 'noreply@example.ro';
+}
+
+/** Adresa publică a aplicației, fără „/” la final (linkurile din emailuri). */
+export function appBaseUrl(): string {
+  return (process.env.NEXTAUTH_URL?.trim() || 'http://localhost:3000').replace(/\/+$/, '');
+}
+
+/** Resend a răspuns cu eroare (cheie invalidă, domeniu neverificat, rețea). */
+export class EmailSendError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmailSendError';
+  }
+}
+
+/** `sent: false` doar când emailurile nu sunt configurate; erorile de trimitere aruncă EmailSendError. */
+export type EmailResult = { sent: true } | { sent: false; reason: 'not_configured' };
+
+type EmailPayload = {
+  to: string | string[];
+  subject: string;
+  html: string;
+  attachments?: { filename: string; content: Buffer }[];
+};
+
+async function deliver(payload: EmailPayload): Promise<EmailResult> {
+  const resend = getResend();
+  if (!resend) {
+    console.warn(`[Email] Neconfigurat, nu se trimite: „${payload.subject}”.`);
+    return { sent: false, reason: 'not_configured' };
+  }
+
+  // Resend nu aruncă la erori de API: le întoarce în `error`.
+  const { error } = await resend.emails.send({ from: emailFrom(), ...payload });
+  if (error) {
+    throw new EmailSendError(`Resend: ${error.message}`);
+  }
+  return { sent: true };
+}
+
+/** Zi calendaristică (Date la miezul nopții UTC, vezi lib/dates.ts) → „dd.MM.yyyy”. */
 function formatDate(date: Date): string {
-  return format(new Date(date), 'dd.MM.yyyy', { locale: ro });
+  return formatInTimeZone(date, 'UTC', 'dd.MM.yyyy');
 }
 
 export async function sendLeaveApprovedEmail({
@@ -36,7 +98,7 @@ export async function sendLeaveApprovedEmail({
   approvedByAdmin: boolean;
   pdfBuffer: Buffer;
   requestId: string;
-}) {
+}): Promise<EmailResult> {
   const html = await render(
     LeaveApprovedEmail({
       firstName,
@@ -49,8 +111,7 @@ export async function sendLeaveApprovedEmail({
     })
   );
 
-  await resend.emails.send({
-    from: emailFrom,
+  return deliver({
     to,
     subject: 'Cerere de concediu aprobată',
     html,
@@ -79,7 +140,7 @@ export async function sendLeaveRejectedEmail({
   endDate: Date;
   workingDays: number;
   rejectionReason: string;
-}) {
+}): Promise<EmailResult> {
   const html = await render(
     LeaveRejectedEmail({
       firstName,
@@ -91,8 +152,7 @@ export async function sendLeaveRejectedEmail({
     })
   );
 
-  await resend.emails.send({
-    from: emailFrom,
+  return deliver({
     to,
     subject: 'Cerere de concediu respinsă',
     html,
@@ -117,8 +177,8 @@ export async function sendLeavePendingAdminEmail({
   workingDays: number;
   violationReasons: string[];
   requestId: string;
-}) {
-  const approvalUrl = `${appUrl}/admin/cereri/${requestId}`;
+}): Promise<EmailResult> {
+  const approvalUrl = `${appBaseUrl()}/admin/cereri/${requestId}`;
 
   const html = await render(
     LeavePendingAdminEmail({
@@ -132,8 +192,7 @@ export async function sendLeavePendingAdminEmail({
     })
   );
 
-  await resend.emails.send({
-    from: emailFrom,
+  return deliver({
     to: adminEmails,
     subject: `Cerere concediu în așteptare - ${employeeFirstName} ${employeeLastName}`,
     html,
