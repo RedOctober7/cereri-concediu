@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { ConstraintScope, ConstraintType } from "@prisma/client";
-import { addYearsUTC, parseDateInput, todayInBucharest } from "@/lib/dates";
+import {
+  addYearsUTC,
+  parseDateInput,
+  todayInBucharest,
+  utcDate,
+} from "@/lib/dates";
 
 export const loginSchema = z.object({
   username: z
@@ -30,8 +35,16 @@ export const changePasswordSchema = z
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
 export const workPointCreateSchema = z.object({
-  name: z.string().trim().min(2, "Numele punctului de lucru este obligatoriu"),
-  address: z.string().trim().max(500, "Adresa este prea lungă").optional(),
+  name: z
+    .string({ error: "Numele punctului de lucru este obligatoriu" })
+    .trim()
+    .min(2, "Numele trebuie să aibă cel puțin 2 caractere")
+    .max(100, "Numele poate avea cel mult 100 de caractere"),
+  address: z
+    .string()
+    .trim()
+    .max(500, "Adresa poate avea cel mult 500 de caractere")
+    .optional(),
 });
 
 // PATCH parțial: activarea/dezactivarea trimite doar { active }; numele și
@@ -40,31 +53,119 @@ export const workPointUpdateSchema = workPointCreateSchema.partial().extend({
   active: z.boolean().optional(),
 });
 
-export const userCreateSchema = z.object({
-  firstName: z.string().trim().min(2, "Prenumele este obligatoriu"),
-  lastName: z.string().trim().min(2, "Numele este obligatoriu"),
-  email: z.string().trim().email("Email invalid"),
-  username: z
-    .string()
+const EARLIEST_HIRE_DATE = utcDate(1950, 0, 1);
+const MAX_LEAVE_BALANCE_DAYS = 366;
+
+/** Rotunjire la 2 zecimale: soldurile sunt fracționare (1,75 zile pe lună). */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Are cel mult două zecimale (toleranță pentru virgula mobilă: 1.15 * 100). */
+function hasAtMostTwoDecimals(value: number): boolean {
+  return Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
+}
+
+/**
+ * Data angajării ca zi calendaristică: 'yyyy-MM-dd' → Date la miezul nopții UTC
+ * (lib/dates.ts), exact ce se scrie în coloana `@db.Date`.
+ */
+const hireDateSchema = z
+  .string({ error: "Data angajării este obligatorie" })
+  .transform((value, ctx) => {
+    if (value.trim() === "") {
+      ctx.addIssue({ code: "custom", message: "Data angajării este obligatorie" });
+      return z.NEVER;
+    }
+    const date = parseDateInput(value);
+    if (!date) {
+      ctx.addIssue({ code: "custom", message: "Data angajării este invalidă" });
+      return z.NEVER;
+    }
+    if (date < EARLIEST_HIRE_DATE) {
+      ctx.addIssue({ code: "custom", message: "Data angajării este prea veche" });
+      return z.NEVER;
+    }
+    if (date > addYearsUTC(todayInBucharest(), 1)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Data angajării poate fi cel mult peste un an",
+      });
+      return z.NEVER;
+    }
+    return date;
+  });
+
+const passwordSchema = z
+  .string({ error: "Parola este obligatorie" })
+  .min(10, "Parola trebuie să aibă minim 10 caractere")
+  .max(200, "Parola este prea lungă")
+  .regex(/[A-Z]/, "Parola trebuie să conțină cel puțin o literă mare")
+  .regex(/[0-9]/, "Parola trebuie să conțină cel puțin o cifră");
+
+function requiredText(label: string, max: number) {
+  return z
+    .string({ error: `${label} este obligatoriu` })
     .trim()
-    .min(3, "Username-ul trebuie să aibă minim 3 caractere")
-    .max(100, "Username-ul este prea lung"),
-  password: z
-    .string()
-    .min(10, "Parola trebuie să aibă minim 10 caractere")
-    .regex(/[A-Z]/, "Parola trebuie să conțină cel puțin o literă mare")
-    .regex(/[0-9]/, "Parola trebuie să conțină cel puțin o cifră"),
-  jobTitle: z.string().trim().min(2, "Funcția este obligatorie"),
-  employer: z.string().trim().min(2, "Angajatorul este obligatoriu"),
+    .min(1, `${label} este obligatoriu`)
+    .min(2, `${label} trebuie să aibă cel puțin 2 caractere`)
+    .max(max, `${label} poate avea cel mult ${max} de caractere`);
+}
+
+/**
+ * Datele de profil ale unui angajat, editabile de admin (creare și pagina de detaliu).
+ * Câmpurile text sunt curățate de spații; username-ul și emailul se scriu cu litere
+ * mici în rută.
+ */
+export const userProfileSchema = z.object({
+  firstName: requiredText("Prenumele", 100),
+  lastName: requiredText("Numele", 100),
+  email: z
+    .string({ error: "Emailul este obligatoriu" })
+    .trim()
+    .min(1, "Emailul este obligatoriu")
+    .max(254, "Emailul este prea lung")
+    .email("Adresa de email nu este validă"),
+  username: z
+    .string({ error: "Numele de utilizator este obligatoriu" })
+    .trim()
+    .min(3, "Numele de utilizator trebuie să aibă minim 3 caractere")
+    .max(100, "Numele de utilizator este prea lung")
+    .regex(
+      /^[A-Za-z0-9._-]+$/,
+      "Numele de utilizator poate conține doar litere fără diacritice, cifre, punct, cratimă și „_”"
+    ),
+  jobTitle: z
+    .string({ error: "Funcția este obligatorie" })
+    .trim()
+    .min(2, "Funcția este obligatorie")
+    .max(200, "Funcția poate avea cel mult 200 de caractere"),
+  employer: z
+    .string({ error: "Angajatorul este obligatoriu" })
+    .trim()
+    .min(2, "Angajatorul este obligatoriu")
+    .max(200, "Angajatorul poate avea cel mult 200 de caractere"),
   workPointId: z.string().trim().optional().nullable(),
-  hireDate: z.coerce.date({
-    error: "Data angajării este invalidă",
-  }),
+  hireDate: hireDateSchema,
   initialLeaveDays: z
-    .number({ error: "Zilele inițiale trebuie să fie număr" })
-    .min(0, "Zilele inițiale nu pot fi negative"),
+    .number({ error: "Soldul inițial trebuie să fie un număr" })
+    .min(0, "Soldul inițial nu poate fi negativ")
+    .max(
+      MAX_LEAVE_BALANCE_DAYS,
+      `Soldul inițial poate fi de cel mult ${MAX_LEAVE_BALANCE_DAYS} de zile`
+    )
+    .refine(hasAtMostTwoDecimals, "Folosește cel mult două zecimale")
+    .transform(round2),
+});
+
+export type UserProfileInput = z.input<typeof userProfileSchema>;
+
+export const userCreateSchema = userProfileSchema.extend({
+  password: passwordSchema,
   active: z.boolean().optional(),
 });
+
+export type UserCreateInput = z.input<typeof userCreateSchema>;
 
 export const userUpdateSchema = userCreateSchema.partial().extend({
   forcePasswordReset: z.boolean().optional(),
