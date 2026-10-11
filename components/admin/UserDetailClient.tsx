@@ -7,6 +7,7 @@ import type { LeaveStatus } from "@prisma/client";
 import {
   ArrowLeft,
   CalendarX2,
+  History,
   KeyRound,
   Loader2,
   Scale,
@@ -393,6 +394,13 @@ export function UserDetailClient({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/admin/jurnal?tinta=${user.id}`}
+            className={buttonVariants({ variant: "ghost" })}
+          >
+            <History aria-hidden="true" />
+            Istoric modificări
+          </Link>
           <Button variant="outline" onClick={() => setBalanceOpen(true)}>
             <Scale aria-hidden="true" />
             Ajustare sold
