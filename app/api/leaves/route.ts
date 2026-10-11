@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { LeaveStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api-session";
@@ -9,6 +9,7 @@ import {
   validateLeaveRequest,
 } from "@/lib/constraints/validate";
 import { createAuditLog } from "@/lib/audit/log";
+import { notifyLeaveApproved } from "@/lib/emails/leave-notifications";
 
 export async function GET() {
   try {
@@ -136,6 +137,12 @@ export async function POST(request: Request) {
         violations: validation.violations,
       },
     });
+
+    // După răspuns: PDF-ul, stocarea și emailul nu întârzie și nu pot face să
+    // eșueze cererea, care e deja salvată (notifyLeaveApproved nu aruncă).
+    if (leave.status === LeaveStatus.APPROVED_AUTO) {
+      after(() => notifyLeaveApproved(leave.id));
+    }
 
     return NextResponse.json(
       {

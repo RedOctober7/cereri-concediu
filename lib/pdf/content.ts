@@ -4,6 +4,12 @@ import { APP_TIME_ZONE, toDateOnlyString } from '@/lib/dates';
 
 // Textele cererii de concediu (PDF), separate de randare ca să poată fi testate.
 
+/**
+ * Versiunea conținutului PDF-ului. Se crește la orice schimbare vizibilă în
+ * CerereConcediu.tsx: PDF-urile stocate cu o versiune mai veche se regenerează.
+ */
+export const LEAVE_PDF_VERSION = 2;
+
 /** Zi calendaristică (Date la miezul nopții UTC, vezi lib/dates.ts) → „dd.MM.yyyy”. */
 export function formatCalendarDay(date: Date): string {
   return formatInTimeZone(date, 'UTC', 'dd.MM.yyyy');

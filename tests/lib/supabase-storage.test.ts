@@ -43,7 +43,7 @@ describe("Supabase Storage", () => {
     const { uploadPDF } = await loadStorage();
 
     expect(supabase.createClient).not.toHaveBeenCalled();
-    await expect(uploadPDF("u1", "r1", Buffer.from("pdf"))).resolves.toBe("cereri/u1/r1.pdf");
+    await expect(uploadPDF("u1", "r1", Buffer.from("pdf"))).resolves.toBe("cereri/u1/r1-v2.pdf");
     await uploadPDF("u1", "r2", Buffer.from("pdf"));
 
     expect(supabase.createClient).toHaveBeenCalledOnce();

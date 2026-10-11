@@ -26,7 +26,8 @@ export interface GeneratePDFInput {
   approval?: LeaveApproval;
 }
 
-async function approvalFor(leave: {
+/** Aprobarea unei cereri deja citite, cu numele administratorului care a aprobat-o. */
+export async function approvalFor(leave: {
   status: LeaveStatus;
   approvedAt: Date | null;
   approvedById: string | null;

@@ -1,8 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { LEAVE_PDF_VERSION } from '@/lib/pdf/content';
 
+// Bucket privat: PDF-urile ajung la utilizatori doar prin GET /api/leaves/[id]/pdf.
 const BUCKET = 'cereri-concediu';
 /** O cerere spre Storage care nu răspunde nu trebuie să țină pe loc ruta care o face. */
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 /** NEXT_PUBLIC_SUPABASE_URL sau SUPABASE_SERVICE_ROLE_KEY lipsește: PDF-urile nu se stochează. */
 export class StorageNotConfiguredError extends Error {
@@ -46,12 +48,20 @@ function getClient(): SupabaseClient {
   return client;
 }
 
+/**
+ * Calea PDF-ului unei cereri în bucket. Include versiunea conținutului: un `pdfUrl`
+ * cu altă cale e un PDF generat după un șablon vechi și se regenerează.
+ */
+export function pdfStoragePath(userId: string, requestId: string): string {
+  return `cereri/${userId}/${requestId}-v${LEAVE_PDF_VERSION}.pdf`;
+}
+
 export async function uploadPDF(
   userId: string,
   requestId: string,
   pdfBuffer: Buffer
 ): Promise<string> {
-  const path = `cereri/${userId}/${requestId}.pdf`;
+  const path = pdfStoragePath(userId, requestId);
 
   const { error } = await getClient()
     .storage.from(BUCKET)
@@ -63,6 +73,14 @@ export async function uploadPDF(
   if (error) throw new Error(`Upload PDF failed: ${error.message}`);
 
   return path;
+}
+
+export async function downloadPDF(path: string): Promise<Buffer> {
+  const { data, error } = await getClient().storage.from(BUCKET).download(path);
+
+  if (error) throw new Error(`Download PDF failed: ${error.message}`);
+
+  return Buffer.from(await data.arrayBuffer());
 }
 
 export async function getSignedPDFUrl(path: string): Promise<string> {

@@ -6,8 +6,9 @@ import {
     Text,
     Heading,
     Hr,
+    Link,
   } from '@react-email/components';
-  
+
   interface LeaveApprovedEmailProps {
     firstName: string;
     lastName: string;
@@ -16,8 +17,12 @@ import {
     workingDays: number;
     availableDaysAfter: number;
     approvedByAdmin: boolean;
+    /** false când PDF-ul nu a putut fi generat: emailul trimite la pagina cererilor. */
+    pdfAttached?: boolean;
+    /** Pagina „Cererile mele”, de unde se descarcă PDF-ul. */
+    leavesUrl?: string;
   }
-  
+
   export function LeaveApprovedEmail({
     firstName,
     lastName,
@@ -26,6 +31,8 @@ import {
     workingDays,
     availableDaysAfter,
     approvedByAdmin,
+    pdfAttached = true,
+    leavesUrl,
   }: LeaveApprovedEmailProps) {
     return (
       <Html lang="ro">
@@ -43,7 +50,20 @@ import {
             <Text><strong>Zile lucrătoare:</strong> {workingDays}</Text>
             <Text><strong>Zile disponibile rămase:</strong> {availableDaysAfter}</Text>
             <Hr />
-            <Text>În atașament găsiți cererea de concediu în format PDF.</Text>
+            {pdfAttached ? (
+              <Text>În atașament găsiți cererea de concediu în format PDF.</Text>
+            ) : (
+              <Text>
+                Cererea de concediu în format PDF se poate descărca din aplicație
+                {leavesUrl ? (
+                  <>
+                    {', din pagina '}
+                    <Link href={leavesUrl} style={{ color: '#2f7a46' }}>Cererile mele</Link>
+                  </>
+                ) : null}
+                .
+              </Text>
+            )}
             <Text style={{ color: '#666', fontSize: '12px' }}>
               Acest email a fost generat automat. Vă rugăm să nu răspundeți la acest mesaj.
             </Text>

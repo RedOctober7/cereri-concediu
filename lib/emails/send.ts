@@ -4,6 +4,7 @@ import { LeaveApprovedEmail } from './LeaveApprovedEmail';
 import { LeaveRejectedEmail } from './LeaveRejectedEmail';
 import { LeavePendingAdminEmail } from './LeavePendingAdminEmail';
 import { formatInTimeZone } from 'date-fns-tz';
+import { leavePdfFileName } from '@/lib/pdf/content';
 
 // Clientul Resend se creează la primul email, nu la importul modulului: fără
 // RESEND_API_KEY aplicația pornește și funcționează, doar că nu trimite emailuri
@@ -86,7 +87,6 @@ export async function sendLeaveApprovedEmail({
   availableDaysAfter,
   approvedByAdmin,
   pdfBuffer,
-  requestId,
 }: {
   to: string;
   firstName: string;
@@ -96,8 +96,10 @@ export async function sendLeaveApprovedEmail({
   workingDays: number;
   availableDaysAfter: number;
   approvedByAdmin: boolean;
-  pdfBuffer: Buffer;
-  requestId: string;
+  /** Fără PDF (generarea a eșuat), emailul trimite la pagina de unde se descarcă. */
+  pdfBuffer?: Buffer | null;
+  /** Nefolosit (numele atașamentului vine din angajat și dată); păstrat pentru apelanți. */
+  requestId?: string;
 }): Promise<EmailResult> {
   const html = await render(
     LeaveApprovedEmail({
@@ -108,6 +110,8 @@ export async function sendLeaveApprovedEmail({
       workingDays,
       availableDaysAfter,
       approvedByAdmin,
+      pdfAttached: Boolean(pdfBuffer),
+      leavesUrl: `${appBaseUrl()}/cereri`,
     })
   );
 
@@ -115,12 +119,9 @@ export async function sendLeaveApprovedEmail({
     to,
     subject: 'Cerere de concediu aprobată',
     html,
-    attachments: [
-      {
-        filename: `cerere-concediu-${requestId.slice(0, 8)}.pdf`,
-        content: pdfBuffer,
-      },
-    ],
+    attachments: pdfBuffer
+      ? [{ filename: leavePdfFileName({ firstName, lastName }, startDate), content: pdfBuffer }]
+      : undefined,
   });
 }
 
