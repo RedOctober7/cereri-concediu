@@ -3,6 +3,7 @@ import { render } from '@react-email/render';
 import { LeaveApprovedEmail } from './LeaveApprovedEmail';
 import { LeaveRejectedEmail } from './LeaveRejectedEmail';
 import { LeavePendingAdminEmail } from './LeavePendingAdminEmail';
+import { PasswordResetEmail } from './PasswordResetEmail';
 import { formatInTimeZone } from 'date-fns-tz';
 import { leavePdfFileName } from '@/lib/pdf/content';
 
@@ -195,6 +196,31 @@ export async function sendLeavePendingAdminEmail({
   return deliver({
     to: adminEmails,
     subject: `Cerere concediu în așteptare - ${employeeFirstName} ${employeeLastName}`,
+    html,
+  });
+}
+
+export async function sendPasswordResetEmail({
+  to,
+  firstName,
+  username,
+  resetUrl,
+  validMinutes,
+}: {
+  to: string;
+  firstName: string;
+  username: string;
+  resetUrl: string;
+  validMinutes: number;
+}): Promise<EmailResult> {
+  const appName = process.env.APP_NAME?.trim() || 'Cereri Concediu';
+  const html = await render(
+    PasswordResetEmail({ appName, firstName, username, resetUrl, validMinutes })
+  );
+
+  return deliver({
+    to,
+    subject: `Resetare parolă - ${appName}`,
     html,
   });
 }
