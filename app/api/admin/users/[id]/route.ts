@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
 import { userUpdateSchema } from "@/lib/validators";
 import { createAuditLog } from "@/lib/audit/log";
+import { DEMO_PROTECTED_MESSAGE, isProtectedDemoAccount } from "@/lib/demo/accounts";
 import { toDateOnlyString } from "@/lib/dates";
 import {
   YEARLY_ROLLOVER_ACTION,
@@ -74,6 +75,17 @@ export async function PATCH(request: Request, context: RouteContext) {
         { error: "Utilizatorul nu a fost găsit." },
         { status: 404 }
       );
+    }
+
+    if (
+      isProtectedDemoAccount(existing.username) &&
+      (parsed.data.password !== undefined ||
+        parsed.data.active !== undefined ||
+        parsed.data.forcePasswordReset !== undefined ||
+        (parsed.data.username !== undefined &&
+          parsed.data.username.toLowerCase() !== existing.username))
+    ) {
+      return NextResponse.json({ error: DEMO_PROTECTED_MESSAGE }, { status: 403 });
     }
 
     if (parsed.data.active === false && id === auth.session.user.id) {

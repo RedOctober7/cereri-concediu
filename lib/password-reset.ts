@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
+import { DEMO_PROTECTED_USERNAMES, isDemoMode } from "@/lib/demo/accounts";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit/log";
@@ -246,7 +247,13 @@ export async function confirmPasswordReset(
         throw new ResetRejected();
       }
       const updated = await tx.user.updateMany({
-        where: { id: reset.userId, active: true, deletedAt: null },
+        where: {
+          id: reset.userId,
+          active: true,
+          deletedAt: null,
+          // Conturile demo de pe pagina de login rămân cu parola publică.
+          ...(isDemoMode() ? { username: { notIn: DEMO_PROTECTED_USERNAMES } } : {}),
+        },
         data: { passwordHash, mustChangePassword: false },
       });
       if (updated.count !== 1) {

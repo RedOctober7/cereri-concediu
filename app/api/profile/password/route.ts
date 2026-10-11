@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import bcrypt from "bcryptjs";
+import { DEMO_PROTECTED_MESSAGE, isProtectedDemoAccount } from "@/lib/demo/accounts";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { changePasswordSchema } from "@/lib/validators";
@@ -37,6 +38,10 @@ export async function POST(request: Request) {
         { error: "Contul nu a fost găsit." },
         { status: 404 }
       );
+    }
+
+    if (isProtectedDemoAccount(user.username)) {
+      return NextResponse.json({ error: DEMO_PROTECTED_MESSAGE }, { status: 403 });
     }
 
     const validCurrent = await bcrypt.compare(
