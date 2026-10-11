@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ConstraintScope, ConstraintType } from "@prisma/client";
+import type { ConstraintConfig, ConstraintConfigByType } from "@/lib/constraints/types";
 import {
   addYearsUTC,
   parseDateInput,
@@ -205,127 +206,105 @@ const MAX_CONSTRAINT_DAYS = 366;
 
 function constraintDaysSchema() {
   return z
-    .number({ error: "Numărul de zile trebuie să fie număr" })
+    .number({ error: "Numărul de zile trebuie să fie un număr" })
     .int("Numărul de zile trebuie să fie întreg")
-    .min(1, "Numărul minim de zile este 1")
+    .min(1, "Numărul de zile trebuie să fie cel puțin 1")
     .max(
       MAX_CONSTRAINT_DAYS,
-      `Numărul maxim de zile este ${MAX_CONSTRAINT_DAYS}`
+      `Numărul de zile poate fi cel mult ${MAX_CONSTRAINT_DAYS}`
     );
 }
 
-const constraintConfigSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal(ConstraintType.MAX_CONCURRENT_PERCENT),
-    config: z.object({
-      percent: z
-        .number({ error: "Procentul trebuie să fie număr" })
-        .min(1, "Procentul minim este 1")
-        .max(100, "Procentul maxim este 100"),
-    }),
+/**
+ * Config-ul fiecărui tip de regulă (coloana JSON `Constraint.config`). Cheile în plus
+ * sunt eliminate, ca în bază să ajungă doar ce citește lib/constraints/validate.ts.
+ */
+export const constraintConfigSchemas = {
+  MAX_CONCURRENT_PERCENT: z.object({
+    percent: z
+      .number({ error: "Procentul trebuie să fie un număr" })
+      .int("Procentul trebuie să fie un număr întreg")
+      .min(1, "Procentul trebuie să fie între 1 și 100")
+      .max(100, "Procentul trebuie să fie între 1 și 100"),
   }),
-  z.object({
-    type: z.literal(ConstraintType.MIN_NOTICE_DAYS),
-    config: z.object({
-      days: constraintDaysSchema(),
-    }),
+  MIN_NOTICE_DAYS: z.object({ days: constraintDaysSchema() }),
+  BLACKOUT_MONTH: z.object({
+    month: z
+      .number({ error: "Alege luna" })
+      .int("Alege luna")
+      .min(1, "Alege luna")
+      .max(12, "Alege luna"),
   }),
-  z.object({
-    type: z.literal(ConstraintType.BLACKOUT_MONTH),
-    config: z.object({
-      month: z
-        .number({ error: "Luna trebuie să fie număr" })
-        .int("Luna trebuie să fie un număr întreg")
-        .min(1, "Luna minimă este 1")
-        .max(12, "Luna maximă este 12"),
-    }),
-  }),
-  z.object({
-    type: z.literal(ConstraintType.MAX_CONSECUTIVE_DAYS),
-    config: z.object({
-      days: constraintDaysSchema(),
-    }),
-  }),
-  z.object({
-    type: z.literal(ConstraintType.MIN_ONE_VACATION_OF_N_DAYS),
-    config: z.object({
-      days: constraintDaysSchema(),
-    }),
-  }),
-]);
+  MAX_CONSECUTIVE_DAYS: z.object({ days: constraintDaysSchema() }),
+  MIN_ONE_VACATION_OF_N_DAYS: z.object({ days: constraintDaysSchema() }),
+} satisfies Record<ConstraintType, z.ZodType>;
 
-/** Primul mesaj de eroare pentru config-ul unei reguli de tipul dat, sau null. */
-export function constraintConfigError(
-  type: ConstraintType,
+export function parseConstraintConfig<T extends ConstraintType>(
+  type: T,
   config: unknown
-): string | null {
-  const parsed = constraintConfigSchema.safeParse({ type, config });
-  if (parsed.success) {
-    return null;
+):
+  | { success: true; data: ConstraintConfigByType[T] }
+  | { success: false; error: string } {
+  const schema: z.ZodType | undefined = constraintConfigSchemas[type];
+  if (!schema) {
+    return { success: false, error: "Tipul regulii este invalid." };
   }
-  return (
-    parsed.error.issues[0]?.message ?? "Configurația regulii este invalidă."
-  );
+  const parsed = schema.safeParse(config);
+  return parsed.success
+    ? { success: true, data: parsed.data as ConstraintConfigByType[T] }
+    : {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? "Configurația regulii este invalidă.",
+      };
 }
 
+/**
+ * O regulă completă (creare, sau starea finală la PATCH): config validat pe tipul ei,
+ * punctul de lucru obligatoriu pentru WORK_POINT și golit pentru GLOBAL.
+ */
 export const constraintCreateSchema = z
   .object({
-    scope: z.enum(ConstraintScope),
-    type: z.enum(ConstraintType),
+    scope: z.enum(ConstraintScope, { error: "Alege unde se aplică regula" }),
+    type: z.enum(ConstraintType, { error: "Alege tipul regulii" }),
     workPointId: z.string().trim().optional().nullable(),
     active: z.boolean().optional(),
-    config: z.record(z.string(), z.unknown()),
+    config: z.unknown(),
   })
-  .superRefine((data, ctx) => {
-    const configError = constraintConfigError(data.type, data.config);
-    if (configError) {
-      ctx.addIssue({
-        code: "custom",
-        message: configError,
-        path: ["config"],
-      });
+  .transform((data, ctx) => {
+    const config = parseConstraintConfig(data.type, data.config);
+    if (!config.success) {
+      ctx.addIssue({ code: "custom", message: config.error, path: ["config"] });
     }
-
     if (data.scope === ConstraintScope.WORK_POINT && !data.workPointId) {
       ctx.addIssue({
         code: "custom",
-        message: "Selectează punctul de lucru pentru această regulă.",
+        message: "Alege punctul de lucru pentru această regulă",
         path: ["workPointId"],
       });
     }
+    if (!config.success || (data.scope === ConstraintScope.WORK_POINT && !data.workPointId)) {
+      return z.NEVER;
+    }
+    return {
+      scope: data.scope,
+      type: data.type,
+      workPointId: data.scope === ConstraintScope.WORK_POINT ? (data.workPointId ?? null) : null,
+      active: data.active,
+      config: config.data as ConstraintConfig,
+    };
   });
 
-// Când payload-ul are doar `config` (sau doar `type`), ruta PATCH validează
-// perechea împreună cu valoarea existentă a regulii.
-export const constraintUpdateSchema = z
-  .object({
-    scope: z.enum(["GLOBAL", "WORK_POINT"]).optional(),
-    type: z
-      .enum([
-        "MAX_CONCURRENT_PERCENT",
-        "MIN_NOTICE_DAYS",
-        "BLACKOUT_MONTH",
-        "MAX_CONSECUTIVE_DAYS",
-        "MIN_ONE_VACATION_OF_N_DAYS",
-      ])
-      .optional(),
-    workPointId: z.string().optional().nullable(),
-    config: z.record(z.string(), z.unknown()).optional(),
-    active: z.boolean().optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.type === undefined || data.config === undefined) {
-      return;
-    }
-    const configError = constraintConfigError(data.type, data.config);
-    if (configError) {
-      ctx.addIssue({
-        code: "custom",
-        message: configError,
-        path: ["config"],
-      });
-    }
-  });
+export type ConstraintInput = z.input<typeof constraintCreateSchema>;
+
+// PATCH parțial: ruta completează câmpurile lipsă cu valorile existente ale regulii și
+// validează rezultatul cu constraintCreateSchema.
+export const constraintUpdateSchema = z.object({
+  scope: z.enum(ConstraintScope).optional(),
+  type: z.enum(ConstraintType).optional(),
+  workPointId: z.string().trim().optional().nullable(),
+  config: z.unknown().optional(),
+  active: z.boolean().optional(),
+});
 
 /** Dată calendaristică 'yyyy-MM-dd' → Date la miezul nopții UTC (lib/dates.ts). */
 function leaveDateSchema(message: string) {
