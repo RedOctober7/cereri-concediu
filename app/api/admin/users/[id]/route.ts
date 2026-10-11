@@ -1,18 +1,52 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
 import { userUpdateSchema } from "@/lib/validators";
 import { createAuditLog } from "@/lib/audit/log";
+import { toDateOnlyString } from "@/lib/dates";
 import {
   YEARLY_ROLLOVER_ACTION,
   openingBalanceYear,
   parseRolloverDetails,
 } from "@/lib/leaves/rollover";
+import { findDuplicateAccount } from "../duplicates";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
+
+/** Câmpurile de profil a căror schimbare se notează în jurnal ca { from, to }. */
+const PROFILE_FIELDS = [
+  "firstName",
+  "lastName",
+  "email",
+  "username",
+  "jobTitle",
+  "employer",
+  "workPointId",
+  "hireDate",
+  "initialLeaveDays",
+  "active",
+] as const;
+
+type ProfileField = (typeof PROFILE_FIELDS)[number];
+type AuditValue = string | number | boolean | null;
+
+function auditValue(value: unknown): AuditValue {
+  if (value instanceof Date) {
+    return toDateOnlyString(value);
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  return null;
+}
+
+function fieldError(error: string, field: string, status: number) {
+  return NextResponse.json({ error, field }, { status });
+}
 
 export async function PATCH(request: Request, context: RouteContext) {
   try {
@@ -26,8 +60,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     const parsed = userUpdateSchema.safeParse(body);
 
     if (!parsed.success) {
-      const message = parsed.error.issues[0]?.message ?? "Date invalide.";
-      return NextResponse.json({ error: message }, { status: 400 });
+      const issue = parsed.error.issues[0];
+      const field = typeof issue?.path[0] === "string" ? issue.path[0] : undefined;
+      return NextResponse.json(
+        { error: issue?.message ?? "Date invalide.", ...(field ? { field } : {}) },
+        { status: 400 }
+      );
     }
 
     const existing = await prisma.user.findUnique({ where: { id } });
@@ -36,6 +74,45 @@ export async function PATCH(request: Request, context: RouteContext) {
         { error: "Utilizatorul nu a fost găsit." },
         { status: 404 }
       );
+    }
+
+    if (parsed.data.active === false && id === auth.session.user.id) {
+      return NextResponse.json(
+        { error: "Nu îți poți dezactiva propriul cont." },
+        { status: 400 }
+      );
+    }
+
+    const email = parsed.data.email?.toLowerCase();
+    const username = parsed.data.username?.toLowerCase();
+    const duplicate = await findDuplicateAccount(
+      {
+        email: email !== undefined && email !== existing.email ? email : undefined,
+        username:
+          username !== undefined && username !== existing.username ? username : undefined,
+      },
+      id
+    );
+    if (duplicate) {
+      return NextResponse.json(duplicate, { status: 409 });
+    }
+
+    // Un punct de lucru nou trebuie să existe și să fie activ; cel deja atribuit
+    // (chiar dacă între timp a fost dezactivat) poate rămâne.
+    const workPointId =
+      parsed.data.workPointId === undefined ? undefined : parsed.data.workPointId || null;
+    if (workPointId && workPointId !== existing.workPointId) {
+      const workPoint = await prisma.workPoint.findUnique({
+        where: { id: workPointId },
+        select: { active: true },
+      });
+      if (!workPoint?.active) {
+        return fieldError(
+          "Punctul de lucru selectat nu există sau este inactiv.",
+          "workPointId",
+          400
+        );
+      }
     }
 
     let passwordHash: string | undefined;
@@ -100,15 +177,11 @@ export async function PATCH(request: Request, context: RouteContext) {
         data: {
           ...(parsed.data.firstName ? { firstName: parsed.data.firstName } : {}),
           ...(parsed.data.lastName ? { lastName: parsed.data.lastName } : {}),
-          ...(parsed.data.email ? { email: parsed.data.email.toLowerCase() } : {}),
-          ...(parsed.data.username
-            ? { username: parsed.data.username.toLowerCase() }
-            : {}),
+          ...(email ? { email } : {}),
+          ...(username ? { username } : {}),
           ...(parsed.data.jobTitle ? { jobTitle: parsed.data.jobTitle } : {}),
           ...(parsed.data.employer ? { employer: parsed.data.employer } : {}),
-          ...(parsed.data.workPointId !== undefined
-            ? { workPointId: parsed.data.workPointId || null }
-            : {}),
+          ...(workPointId !== undefined ? { workPointId } : {}),
           ...(parsed.data.hireDate ? { hireDate: parsed.data.hireDate } : {}),
           ...(newInitialLeaveDays !== undefined
             ? { initialLeaveDays: newInitialLeaveDays }
@@ -147,19 +220,34 @@ export async function PATCH(request: Request, context: RouteContext) {
       };
     });
 
-    // Parola în clar nu ajunge niciodată în audit log; notăm doar că a fost resetată.
-    const { password, ...auditDetails } = parsed.data;
-    await createAuditLog({
-      userId: auth.session.user.id,
-      action: "UPDATE_USER",
-      entityType: "User",
-      entityId: updated.id,
-      details: {
-        ...auditDetails,
-        ...(password ? { passwordReset: true } : {}),
-        ...(balanceChange ?? {}),
-      },
-    });
+    // Doar câmpurile care chiar s-au schimbat, ca { from, to }: jurnalul arată
+    // diferența, nu tot formularul. Parola nu ajunge niciodată în jurnal.
+    const changes: Partial<Record<ProfileField, { from: AuditValue; to: AuditValue }>> = {};
+    for (const field of PROFILE_FIELDS) {
+      const from = auditValue(existing[field]);
+      const to = auditValue(updated[field]);
+      if (parsed.data[field] !== undefined && from !== to) {
+        changes[field] = { from, to };
+      }
+    }
+
+    const hasChanges = Object.keys(changes).length > 0;
+    if (hasChanges || passwordHash || parsed.data.forcePasswordReset !== undefined) {
+      await createAuditLog({
+        userId: auth.session.user.id,
+        action: "UPDATE_USER",
+        entityType: "User",
+        entityId: updated.id,
+        details: {
+          ...(hasChanges ? { changes } : {}),
+          ...(passwordHash ? { passwordReset: true } : {}),
+          ...(parsed.data.forcePasswordReset !== undefined
+            ? { forcePasswordReset: parsed.data.forcePasswordReset }
+            : {}),
+          ...(balanceChange ?? {}),
+        },
+      });
+    }
 
     return NextResponse.json({ data: updated });
   } catch (error) {
@@ -167,11 +255,16 @@ export async function PATCH(request: Request, context: RouteContext) {
       error instanceof Error &&
       error.message === "OPENING_BALANCE_ALREADY_ROLLED_OVER"
     ) {
+      return fieldError(
+        "Soldul inițial nu mai poate fi modificat: zilele din anul respectiv au fost deja procesate la reportarea anuală. Folosește „Ajustare sold” pentru corecturi.",
+        "initialLeaveDays",
+        409
+      );
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      // Același username sau email salvat în paralel de altă cerere.
       return NextResponse.json(
-        {
-          error:
-            "Soldul inițial nu mai poate fi modificat: zilele din anul respectiv au fost deja procesate la reportarea anuală.",
-        },
+        { error: "Există deja un utilizator cu acest email sau nume de utilizator." },
         { status: 409 }
       );
     }

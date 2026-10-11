@@ -171,6 +171,33 @@ export const userUpdateSchema = userCreateSchema.partial().extend({
   forcePasswordReset: z.boolean().optional(),
 });
 
+/** Resetarea parolei de către admin (PATCH /api/admin/users/[id] cu `password`). */
+export const adminPasswordResetSchema = z.object({ password: passwordSchema });
+
+/**
+ * Ajustare manuală a soldului (POST /api/admin/users/[id]/balance): zile cu semn,
+ * adunate la availableDays, cu motiv obligatoriu (ajunge în jurnalul de activitate).
+ */
+export const balanceAdjustmentSchema = z.object({
+  delta: z
+    .number({ error: "Numărul de zile trebuie să fie un număr" })
+    .refine((value) => value !== 0, "Introdu un număr de zile diferit de zero")
+    .refine(
+      (value) => Math.abs(value) <= MAX_LEAVE_BALANCE_DAYS,
+      `Ajustarea poate fi de cel mult ${MAX_LEAVE_BALANCE_DAYS} de zile`
+    )
+    .refine(hasAtMostTwoDecimals, "Folosește cel mult două zecimale")
+    .transform(round2),
+  reason: z
+    .string({ error: "Motivul este obligatoriu" })
+    .trim()
+    .min(1, "Motivul este obligatoriu")
+    .min(5, "Motivul trebuie să aibă cel puțin 5 caractere")
+    .max(500, "Motivul poate avea cel mult 500 de caractere"),
+});
+
+export type BalanceAdjustmentInput = z.input<typeof balanceAdjustmentSchema>;
+
 // Valorile ajung în bucle zi cu zi (ex. addWorkingDays pentru preaviz), deci
 // le limităm la un an.
 const MAX_CONSTRAINT_DAYS = 366;
