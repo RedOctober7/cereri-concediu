@@ -11,11 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loginSchema, type LoginInput } from "@/lib/validators";
+import { safeCallbackPath } from "./safe-callback";
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl");
   const [isLoading, setIsLoading] = useState(false);
 
   const {
@@ -57,8 +57,14 @@ export function LoginForm() {
         return;
       }
 
-      if (callbackUrl) {
-        router.push(callbackUrl);
+      // Doar căi de pe același site: altfel ?callbackUrl=https://evil.com ar trimite
+      // utilizatorul, imediat după autentificare, pe alt site (open redirect).
+      const callbackPath = safeCallbackPath(
+        searchParams.get("callbackUrl"),
+        window.location.origin
+      );
+      if (callbackPath) {
+        router.push(callbackPath);
       } else if (session.user?.role === "ADMIN") {
         router.push("/admin");
       } else {
