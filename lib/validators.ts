@@ -38,6 +38,7 @@ export const workPointCreateSchema = z.object({
   name: z
     .string({ error: "Numele punctului de lucru este obligatoriu" })
     .trim()
+    .min(1, "Numele punctului de lucru este obligatoriu")
     .min(2, "Numele trebuie să aibă cel puțin 2 caractere")
     .max(100, "Numele poate avea cel mult 100 de caractere"),
   address: z
