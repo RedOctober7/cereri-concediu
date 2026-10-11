@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   update: vi.fn(),
+  findUnique: vi.fn(),
+  findMany: vi.fn(),
+  sendLeavePendingAdminEmail: vi.fn(),
   findLeaveForPdf: vi.fn(),
   renderLeavePdf: vi.fn(),
   storeLeavePdf: vi.fn(),
@@ -9,7 +12,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  prisma: { leaveRequest: { update: mocks.update } },
+  prisma: {
+    leaveRequest: { update: mocks.update, findUnique: mocks.findUnique },
+    user: { findMany: mocks.findMany },
+  },
 }));
 
 vi.mock("@/lib/pdf/leave-pdf", () => ({
@@ -20,9 +26,13 @@ vi.mock("@/lib/pdf/leave-pdf", () => ({
 
 vi.mock("@/lib/emails/send", () => ({
   sendLeaveApprovedEmail: mocks.sendLeaveApprovedEmail,
+  sendLeavePendingAdminEmail: mocks.sendLeavePendingAdminEmail,
 }));
 
-import { notifyLeaveApproved } from "@/lib/emails/leave-notifications";
+import {
+  notifyAdminsLeavePending,
+  notifyLeaveApproved,
+} from "@/lib/emails/leave-notifications";
 
 const approvedLeave = {
   id: "r1",
@@ -105,5 +115,65 @@ describe("notifyLeaveApproved", () => {
     await notifyLeaveApproved("r1");
     expect(mocks.renderLeavePdf).not.toHaveBeenCalled();
     expect(mocks.sendLeaveApprovedEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifyAdminsLeavePending", () => {
+  const pendingLeave = {
+    status: "PENDING_ADMIN",
+    startDate: new Date(Date.UTC(2026, 11, 21)),
+    endDate: new Date(Date.UTC(2026, 11, 23)),
+    workingDays: 3,
+    violationReasons: ["Luna decembrie este perioadă restricționată"],
+    user: { firstName: "Ion", lastName: "Popescu" },
+  };
+
+  beforeEach(() => {
+    Object.values(mocks).forEach((mock) => mock.mockReset());
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.findUnique.mockResolvedValue(pendingLeave);
+  });
+
+  it("trimite un email tuturor administratorilor activi, cu motivele", async () => {
+    mocks.findMany.mockResolvedValue([{ email: "a@firma.ro" }, { email: "b@firma.ro" }]);
+    mocks.sendLeavePendingAdminEmail.mockResolvedValue({ sent: true });
+
+    await notifyAdminsLeavePending("r2");
+
+    expect(mocks.findMany).toHaveBeenCalledWith({
+      where: { role: "ADMIN", active: true, deletedAt: null },
+      select: { email: true },
+    });
+    expect(mocks.sendLeavePendingAdminEmail).toHaveBeenCalledWith({
+      adminEmails: ["a@firma.ro", "b@firma.ro"],
+      employeeFirstName: "Ion",
+      employeeLastName: "Popescu",
+      startDate: pendingLeave.startDate,
+      endDate: pendingLeave.endDate,
+      workingDays: 3,
+      violationReasons: pendingLeave.violationReasons,
+    });
+  });
+
+  it("fără administratori activi nu trimite nimic", async () => {
+    mocks.findMany.mockResolvedValue([]);
+    await notifyAdminsLeavePending("r2");
+    expect(mocks.sendLeavePendingAdminEmail).not.toHaveBeenCalled();
+  });
+
+  it("nu anunță o cerere care nu mai e în așteptare (ex. anulată între timp)", async () => {
+    mocks.findUnique.mockResolvedValue({ ...pendingLeave, status: "CANCELLED" });
+    await notifyAdminsLeavePending("r2");
+    expect(mocks.findMany).not.toHaveBeenCalled();
+    expect(mocks.sendLeavePendingAdminEmail).not.toHaveBeenCalled();
+  });
+
+  it("un eșec la trimitere nu aruncă", async () => {
+    mocks.findMany.mockResolvedValue([{ email: "a@firma.ro" }]);
+    mocks.sendLeavePendingAdminEmail.mockRejectedValue(new Error("Resend: domeniu neverificat"));
+
+    await expect(notifyAdminsLeavePending("r2")).resolves.toBeUndefined();
+    expect(console.error).toHaveBeenCalled();
   });
 });

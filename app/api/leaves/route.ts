@@ -9,7 +9,10 @@ import {
   validateLeaveRequest,
 } from "@/lib/constraints/validate";
 import { createAuditLog } from "@/lib/audit/log";
-import { notifyLeaveApproved } from "@/lib/emails/leave-notifications";
+import {
+  notifyAdminsLeavePending,
+  notifyLeaveApproved,
+} from "@/lib/emails/leave-notifications";
 
 export async function GET() {
   try {
@@ -138,11 +141,13 @@ export async function POST(request: Request) {
       },
     });
 
-    // După răspuns: PDF-ul, stocarea și emailul nu întârzie și nu pot face să
-    // eșueze cererea, care e deja salvată (notifyLeaveApproved nu aruncă).
-    if (leave.status === LeaveStatus.APPROVED_AUTO) {
-      after(() => notifyLeaveApproved(leave.id));
-    }
+    // După răspuns: PDF-ul, stocarea și emailurile nu întârzie și nu pot face să
+    // eșueze cererea, care e deja salvată (funcțiile notify* nu aruncă).
+    after(() =>
+      leave.status === LeaveStatus.APPROVED_AUTO
+        ? notifyLeaveApproved(leave.id)
+        : notifyAdminsLeavePending(leave.id)
+    );
 
     return NextResponse.json(
       {

@@ -168,7 +168,6 @@ export async function sendLeavePendingAdminEmail({
   endDate,
   workingDays,
   violationReasons,
-  requestId,
 }: {
   adminEmails: string[];
   employeeFirstName: string;
@@ -177,9 +176,9 @@ export async function sendLeavePendingAdminEmail({
   endDate: Date;
   workingDays: number;
   violationReasons: string[];
-  requestId: string;
 }): Promise<EmailResult> {
-  const approvalUrl = `${appBaseUrl()}/admin/cereri/${requestId}`;
+  // Lista de cereri din admin se deschide implicit pe filtrul „În așteptare”.
+  const approvalUrl = `${appBaseUrl()}/admin/cereri`;
 
   const html = await render(
     LeavePendingAdminEmail({

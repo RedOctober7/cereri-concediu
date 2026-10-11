@@ -73,6 +73,28 @@ describe("trimiterea emailurilor", () => {
     expect(payload.html).toContain("15.10.2026");
   });
 
+  it("emailul către admini trimite la lista de cereri (pagina există)", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_test");
+    vi.stubEnv("NEXTAUTH_URL", "https://concedii.firma.ro/");
+    resend.send.mockResolvedValue({ data: { id: "e2" }, error: null });
+    const { sendLeavePendingAdminEmail } = await loadSend();
+
+    await sendLeavePendingAdminEmail({
+      adminEmails: ["a@firma.ro", "b@firma.ro"],
+      employeeFirstName: "Ion",
+      employeeLastName: "Popescu",
+      startDate: rejected.startDate,
+      endDate: rejected.endDate,
+      workingDays: 2,
+      violationReasons: ["Preaviz minim 2 zile lucrătoare"],
+    });
+
+    const payload = resend.send.mock.calls[0][0];
+    expect(payload.to).toEqual(["a@firma.ro", "b@firma.ro"]);
+    expect(payload.html).toContain('href="https://concedii.firma.ro/admin/cereri"');
+    expect(payload.html).toContain("Preaviz minim 2 zile lucrătoare");
+  });
+
   it("o eroare întoarsă de Resend devine EmailSendError", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_test");
     resend.send.mockResolvedValue({
