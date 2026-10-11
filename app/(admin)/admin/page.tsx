@@ -117,7 +117,7 @@ function StatTile({
     >
       <CardHeader>
         <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl font-semibold tabular-nums sm:text-3xl">{value}</CardTitle>
+        <CardTitle className="col-start-1 text-2xl font-semibold tabular-nums sm:text-3xl">{value}</CardTitle>
         <CardAction className="hidden sm:block">
           <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:size-5">
             {icon}
@@ -496,45 +496,81 @@ async function DashboardContent() {
           {workPointRows.length === 0 ? (
             <EmptyText>Nu există încă puncte de lucru.</EmptyText>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Punct de lucru</TableHead>
-                  <TableHead className="w-20 text-right whitespace-normal">Angajați</TableHead>
-                  <TableHead className="w-24 text-right whitespace-normal">În concediu azi</TableHead>
-                  <TableHead className="w-24 text-right whitespace-normal">În așteptare</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Mobil: listă (4 coloane nu încap lizibil pe un telefon). */}
+              <ul className="divide-y sm:hidden">
                 {workPointRows.map((row) => (
-                  <TableRow key={row.key}>
-                    <TableCell className="font-medium">
-                      {row.name}
-                      {row.inactive ? (
-                        <Badge variant="outline" className="ml-2">
-                          inactiv
-                        </Badge>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{row.employees}</TableCell>
-                    <TableCell className="text-right tabular-nums">{row.onLeave}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {row.pending > 0 ? (
-                        <Link
-                          href={`/admin/cereri?wp=${row.filter}`}
-                          className="rounded-sm font-medium text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
-                          aria-label={`${pluralRo(row.pending, "cerere", "cereri")} în așteptare la ${row.name}`}
-                        >
-                          {row.pending}
-                        </Link>
-                      ) : (
-                        <span className="text-muted-foreground">0</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                  <li key={row.key} className="flex items-center gap-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">
+                        {row.name}
+                        {row.inactive ? (
+                          <Badge variant="outline" className="ml-2">
+                            inactiv
+                          </Badge>
+                        ) : null}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {pluralRo(row.employees, "angajat", "angajați")} · {row.onLeave} în
+                        concediu azi
+                      </p>
+                    </div>
+                    {row.pending > 0 ? (
+                      <Link
+                        href={`/admin/cereri?wp=${row.filter}`}
+                        aria-label={`${pluralRo(row.pending, "cerere", "cereri")} în așteptare la ${row.name}`}
+                        className="inline-flex h-8 shrink-0 items-center rounded-full bg-primary/10 px-3 text-xs font-medium text-primary tabular-nums outline-none hover:bg-primary/15 focus-visible:ring-2 focus-visible:ring-ring/50"
+                      >
+                        {row.pending} în așteptare
+                      </Link>
+                    ) : (
+                      <span className="shrink-0 text-xs text-muted-foreground">0 în așteptare</span>
+                    )}
+                  </li>
                 ))}
-              </TableBody>
-            </Table>
+              </ul>
+              <div className="hidden sm:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-normal">Punct de lucru</TableHead>
+                      <TableHead className="text-right whitespace-normal">Angajați</TableHead>
+                      <TableHead className="text-right whitespace-normal">În concediu azi</TableHead>
+                      <TableHead className="text-right whitespace-normal">În așteptare</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {workPointRows.map((row) => (
+                      <TableRow key={row.key}>
+                        <TableCell className="font-medium whitespace-normal">
+                          {row.name}
+                          {row.inactive ? (
+                            <Badge variant="outline" className="ml-2">
+                              inactiv
+                            </Badge>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{row.employees}</TableCell>
+                        <TableCell className="text-right tabular-nums">{row.onLeave}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {row.pending > 0 ? (
+                            <Link
+                              href={`/admin/cereri?wp=${row.filter}`}
+                              className="rounded-sm font-medium text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                              aria-label={`${pluralRo(row.pending, "cerere", "cereri")} în așteptare la ${row.name}`}
+                            >
+                              {row.pending}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">0</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
