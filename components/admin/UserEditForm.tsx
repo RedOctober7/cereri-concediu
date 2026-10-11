@@ -120,13 +120,15 @@ export function UserEditForm({
     event.preventDefault();
     setFormError(null);
 
-    const parsed = userProfileSchema.safeParse(userValuesToInput(values));
+    if (!dirty) {
+      return;
+    }
+    // Doar câmpurile schimbate, ca la server: un cont vechi cu o valoare care nu mai
+    // respectă regulile de acum (ex. un username cu alte caractere) rămâne editabil.
+    const parsed = userProfileSchema.partial().safeParse(changes);
     if (!parsed.success) {
       setErrors(fieldErrorsFrom(parsed.error.issues));
       focusFirstInvalid();
-      return;
-    }
-    if (!dirty) {
       return;
     }
 
