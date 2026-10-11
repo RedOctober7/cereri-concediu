@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
   user: { findUnique: vi.fn(), count: vi.fn() },
-  leaveRequest: { findFirst: vi.fn(), count: vi.fn() },
+  leaveRequest: { findFirst: vi.fn(), count: vi.fn(), findMany: vi.fn() },
   constraint: { findMany: vi.fn() },
 }));
 
@@ -41,6 +41,7 @@ describe("validateLeaveRequest", () => {
     db.user.count.mockResolvedValue(4);
     db.leaveRequest.findFirst.mockResolvedValue(null);
     db.leaveRequest.count.mockResolvedValue(0);
+    db.leaveRequest.findMany.mockResolvedValue([]);
     db.constraint.findMany.mockResolvedValue([]);
   });
 
@@ -184,6 +185,63 @@ describe("validateLeaveRequest", () => {
       const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
       expect(result.violations).toEqual([]);
       expect(db.leaveRequest.count).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("concediu neîntrerupt anual (MIN_ONE_VACATION_OF_N_DAYS, Codul muncii art. 148)", () => {
+    const rule = () => [constraint(ConstraintType.MIN_ONE_VACATION_OF_N_DAYS, { days: 10 })];
+
+    it("cererea care coboară soldul sub N, fără concediu lung în an, merge la administrator", async () => {
+      db.user.findUnique.mockResolvedValue(activeUser({ availableDays: 12 }));
+      db.constraint.findMany.mockResolvedValue(rule());
+      const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
+      expect(result.blockingError).toBeNull();
+      expect(result.needsAdminApproval).toBe(true);
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0]).toMatch(/^În 2026 nu există încă un concediu neîntrerupt de cel puțin 10 zile lucrătoare, iar după această cerere ar rămâne 7 zile disponibile/);
+    });
+
+    it("soldul rămâne suficient pentru un concediu de N zile: fără încălcare", async () => {
+      db.user.findUnique.mockResolvedValue(activeUser({ availableDays: 20 }));
+      db.constraint.findMany.mockResolvedValue(rule());
+      const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
+      expect(result.violations).toEqual([]);
+      expect(result.needsAdminApproval).toBe(false);
+    });
+
+    it("un concediu aprobat de cel puțin N zile în același an: fără încălcare", async () => {
+      db.user.findUnique.mockResolvedValue(activeUser({ availableDays: 12 }));
+      db.constraint.findMany.mockResolvedValue(rule());
+      db.leaveRequest.findMany.mockResolvedValue([
+        { startDate: day("2026-07-06"), endDate: day("2026-07-17"), workingDays: 10, status: LeaveStatus.APPROVED_ADMIN },
+      ]);
+      const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
+      expect(result.violations).toEqual([]);
+    });
+
+    it("cererea lipită de un concediu existent ajunge împreună la N zile: fără încălcare", async () => {
+      db.user.findUnique.mockResolvedValue(activeUser({ availableDays: 12 }));
+      db.constraint.findMany.mockResolvedValue(rule());
+      db.leaveRequest.findMany.mockResolvedValue([
+        { startDate: day("2026-10-26"), endDate: day("2026-10-30"), workingDays: 5, status: LeaveStatus.APPROVED_AUTO },
+      ]);
+      const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
+      expect(result.violations).toEqual([]);
+    });
+
+    it("soldul era deja sub N înainte de cerere: cererea nu schimbă nimic și trece", async () => {
+      db.user.findUnique.mockResolvedValue(activeUser({ availableDays: 8 }));
+      db.constraint.findMany.mockResolvedValue(rule());
+      const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-20"));
+      expect(result.violations).toEqual([]);
+    });
+
+    it("cererea însăși are cel puțin N zile: fără interogări și fără încălcare", async () => {
+      db.user.findUnique.mockResolvedValue(activeUser({ availableDays: 12 }));
+      db.constraint.findMany.mockResolvedValue(rule());
+      const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-30"));
+      expect(result.violations).toEqual([]);
+      expect(db.leaveRequest.findMany).not.toHaveBeenCalled();
     });
   });
 });
