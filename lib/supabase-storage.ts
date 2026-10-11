@@ -15,8 +15,8 @@ export class StorageNotConfiguredError extends Error {
 }
 
 // Clientul se creează la prima folosire, nu la importul modulului: fără variabilele
-// Supabase aplicația pornește, iar funcțiile de mai jos aruncă StorageNotConfiguredError
-// (apelanții tratează deja eșecul stocării ca pe o eroare netratată fatal).
+// Supabase aplicația pornește, iar funcțiile de mai jos aruncă StorageNotConfiguredError.
+// Apelanții prind deja eșecurile stocării și continuă fără PDF stocat.
 let client: SupabaseClient | null = null;
 let missingConfigWarned = false;
 

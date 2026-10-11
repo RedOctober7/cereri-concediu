@@ -146,13 +146,18 @@ export async function processResetRequest(identifier: string, ip: string): Promi
     }),
   ]);
 
-  await createAuditLog({
-    userId: user.id,
-    action: "PASSWORD_RESET_REQUESTED",
-    entityType: "User",
-    entityId: user.id,
-    ipAddress: ip,
-  });
+  try {
+    await createAuditLog({
+      userId: user.id,
+      action: "PASSWORD_RESET_REQUESTED",
+      entityType: "User",
+      entityId: user.id,
+      ipAddress: ip,
+    });
+  } catch (error) {
+    // Tokenul e creat: un audit eșuat nu trebuie să oprească emailul.
+    console.error("[Resetare parolă] Auditul nu a putut fi scris:", error);
+  }
 
   const link = `${appBaseUrl()}/reset-parola?token=${token}`;
   try {
