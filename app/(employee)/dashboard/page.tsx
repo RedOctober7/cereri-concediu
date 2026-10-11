@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { getServerSession } from "next-auth";
-import { format } from "date-fns";
-import { ro } from "date-fns/locale";
 import { CalendarPlus } from "lucide-react";
 import { authOptions } from "@/lib/auth";
+import { formatDay, formatDays } from "@/components/admin/format";
 import { getEmployeeDashboardStats } from "@/lib/leaves/employee-stats";
 import {
   leaveStatusClassName,
@@ -34,7 +33,7 @@ export default async function DashboardPage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Panou</h1>
           <p className="text-muted-foreground">
             Bun venit, {session?.user?.name ?? "angajat"}!
           </p>
@@ -49,19 +48,19 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader>
             <CardDescription>Zile disponibile</CardDescription>
-            <CardTitle>{stats.availableDays.toFixed(2)}</CardTitle>
+            <CardTitle>{formatDays(stats.availableDays)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
             <CardDescription>Zile luate în anul curent</CardDescription>
-            <CardTitle>{stats.takenThisYear}</CardTitle>
+            <CardTitle>{formatDays(stats.takenThisYear)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
             <CardDescription>Zile acumulate luna curentă</CardDescription>
-            <CardTitle>{stats.monthlyAccrualDays.toFixed(2)}</CardTitle>
+            <CardTitle>{formatDays(stats.monthlyAccrualDays)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
@@ -69,7 +68,7 @@ export default async function DashboardPage() {
             <CardDescription>Următoarea cerere aprobată</CardDescription>
             <CardTitle className="text-base font-medium">
               {stats.nextApproved
-                ? `${format(stats.nextApproved.startDate, "dd.MM.yyyy", { locale: ro })} – ${format(stats.nextApproved.endDate, "dd.MM.yyyy", { locale: ro })}`
+                ? `${formatDay(stats.nextApproved.startDate)} – ${formatDay(stats.nextApproved.endDate)}`
                 : "—"}
             </CardTitle>
           </CardHeader>
@@ -94,8 +93,8 @@ export default async function DashboardPage() {
               >
                 <div>
                   <p className="font-medium text-sm">
-                    {format(leave.startDate, "dd.MM.yyyy", { locale: ro })} –{" "}
-                    {format(leave.endDate, "dd.MM.yyyy", { locale: ro })}
+                    {formatDay(leave.startDate)} –{" "}
+                    {formatDay(leave.endDate)}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {leave.workingDays} zile lucrătoare

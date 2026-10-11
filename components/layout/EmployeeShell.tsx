@@ -15,7 +15,7 @@ export function EmployeeShell({
   const { appName, companyName } = getBrand();
 
   const navItems: ShellNavItem[] = [
-    { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard />, exact: true },
+    { href: "/dashboard", label: "Panou", icon: <LayoutDashboard />, exact: true },
     { href: "/cereri/noua", label: "Cerere nouă", icon: <CalendarPlus /> },
     { href: "/cereri", label: "Cererile mele", icon: <ClipboardList /> },
     { href: "/profil", label: "Profil", icon: <User /> },
