@@ -9,9 +9,14 @@ const inter = Inter({
   variable: "--font-sans",
 });
 
+const appName = process.env.APP_NAME ?? "Cereri Concediu";
+
 export const metadata: Metadata = {
-  title: process.env.APP_NAME ?? "Cereri Concediu",
-  description: "Management cereri concediu de odihnă",
+  title: appName,
+  applicationName: appName,
+  description:
+    "Cereri de concediu de odihnă online: depunere, reguli de aprobare, aprobare de către administrator, PDF și evidența zilelor.",
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({
