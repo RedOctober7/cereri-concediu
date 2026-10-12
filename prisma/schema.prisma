@@ -98,6 +98,9 @@ model LeaveRequest {
   workingDays      Int
   status           LeaveStatus
   violationReasons String[]
+  /// Numele, funcția, angajatorul și punctul de lucru la depunere: PDF-ul cererii nu se schimbă
+  /// dacă profilul angajatului e editat ulterior. Null pentru cererile mai vechi.
+  employeeSnapshot Json?
   rejectionReason  String?
   pdfUrl           String?
   approvedById     String?

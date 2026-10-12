@@ -9,6 +9,7 @@ import {
   validateLeaveRequest,
 } from "@/lib/constraints/validate";
 import { createAuditLog } from "@/lib/audit/log";
+import { employeeSnapshotFrom } from "@/lib/pdf/snapshot";
 import { notifyAdminsLeavePending } from "@/lib/emails/leave-notifications";
 
 export async function GET() {
@@ -82,6 +83,17 @@ export async function POST(request: Request) {
         throw new Error("OVERLAPPING_LEAVE");
       }
 
+      const employee = await tx.user.findUniqueOrThrow({
+        where: { id: auth.session.user.id },
+        select: {
+          firstName: true,
+          lastName: true,
+          jobTitle: true,
+          employer: true,
+          workPoint: { select: { name: true } },
+        },
+      });
+
       return tx.leaveRequest.create({
         data: {
           userId: auth.session.user.id,
@@ -90,6 +102,7 @@ export async function POST(request: Request) {
           workingDays: validation.workingDays,
           status: LeaveStatus.PENDING_ADMIN,
           violationReasons: validation.violations,
+          employeeSnapshot: employeeSnapshotFrom(employee),
         },
       });
     });

@@ -17,13 +17,17 @@ vi.mock("@/lib/supabase-storage", async (importOriginal) => ({
   uploadPDF: mocks.uploadPDF,
 }));
 
-vi.mock("@/lib/pdf/generate", () => ({
-  approvalFor: vi.fn(),
-  generateLeavePDF: vi.fn(),
-}));
+const generate = vi.hoisted(() => ({ approvalFor: vi.fn(), generateLeavePDF: vi.fn() }));
+vi.mock("@/lib/pdf/generate", () => generate);
 
 import { StorageNotConfiguredError, pdfStoragePath } from "@/lib/supabase-storage";
-import { readStoredLeavePdf, storeLeavePdf, type LeaveForPdf } from "@/lib/pdf/leave-pdf";
+import {
+  leavePdfDownloadName,
+  readStoredLeavePdf,
+  renderLeavePdf,
+  storeLeavePdf,
+  type LeaveForPdf,
+} from "@/lib/pdf/leave-pdf";
 
 function leave(pdfUrl: string | null): LeaveForPdf {
   return {
@@ -37,6 +41,7 @@ function leave(pdfUrl: string | null): LeaveForPdf {
     createdAt: new Date("2026-10-11T09:00:00Z"),
     approvedAt: new Date("2026-10-11T09:00:00Z"),
     approvedById: null,
+    employeeSnapshot: null,
     user: {
       firstName: "Ion",
       lastName: "Popescu",
@@ -105,5 +110,41 @@ describe("PDF-ul stocat", () => {
 
     expect(await storeLeavePdf(leave(null), Buffer.from("x"))).toBeNull();
     expect(console.error).toHaveBeenCalled();
+  });
+});
+
+describe("datele angajatului din PDF", () => {
+  const snapshot = {
+    firstName: "Ion",
+    lastName: "Ionescu",
+    jobTitle: "Farmacist",
+    employer: "Vechea Firmă SRL",
+    workPointName: "Centru",
+  };
+
+  it("folosește datele de la depunere, nu profilul curent", async () => {
+    await renderLeavePdf({ ...leave(null), employeeSnapshot: snapshot });
+    expect(generate.generateLeavePDF).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: expect.objectContaining({
+          firstName: "Ion",
+          lastName: "Ionescu",
+          jobTitle: "Farmacist",
+          employer: "Vechea Firmă SRL",
+          workPoint: { name: "Centru" },
+          email: "ion@example.ro",
+        }),
+      })
+    );
+    expect(leavePdfDownloadName({ ...leave(null), employeeSnapshot: snapshot })).toBe(
+      "cerere-concediu-ionescu-ion-2026-10-19.pdf"
+    );
+  });
+
+  it("o cerere veche, fără snapshot, folosește profilul curent", async () => {
+    await renderLeavePdf(leave(null));
+    expect(generate.generateLeavePDF).toHaveBeenCalledWith(
+      expect.objectContaining({ user: expect.objectContaining({ lastName: "Popescu" }) })
+    );
   });
 });

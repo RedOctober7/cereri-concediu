@@ -8,6 +8,7 @@ import {
 } from '@/lib/supabase-storage';
 import { leavePdfFileName } from './content';
 import { approvalFor, generateLeavePDF } from './generate';
+import { parseEmployeeSnapshot } from './snapshot';
 
 // PDF-ul unei cereri aprobate: din Storage când există (și e generat cu șablonul
 // curent), altfel generat pe loc. Stocarea e opțională: fără Supabase, sau când
@@ -24,6 +25,7 @@ const leavePdfSelect = {
   createdAt: true,
   approvedAt: true,
   approvedById: true,
+  employeeSnapshot: true,
   user: {
     select: {
       firstName: true,
@@ -43,16 +45,32 @@ export function findLeaveForPdf(id: string): Promise<LeaveForPdf | null> {
   return prisma.leaveRequest.findUnique({ where: { id }, select: leavePdfSelect });
 }
 
+/** Angajatul din PDF: datele de la depunere (snapshot), peste profilul curent. */
+function pdfUser(leave: LeaveForPdf): LeaveForPdf['user'] {
+  const snapshot = parseEmployeeSnapshot(leave.employeeSnapshot);
+  if (!snapshot) {
+    return leave.user;
+  }
+  return {
+    ...leave.user,
+    firstName: snapshot.firstName,
+    lastName: snapshot.lastName,
+    jobTitle: snapshot.jobTitle,
+    employer: snapshot.employer,
+    workPoint: snapshot.workPointName ? { name: snapshot.workPointName } : null,
+  };
+}
+
 export async function renderLeavePdf(leave: LeaveForPdf): Promise<Buffer> {
   return generateLeavePDF({
     request: leave,
-    user: leave.user,
+    user: pdfUser(leave),
     approval: await approvalFor(leave),
   });
 }
 
 export function leavePdfDownloadName(leave: LeaveForPdf): string {
-  return leavePdfFileName(leave.user, leave.startDate);
+  return leavePdfFileName(pdfUser(leave), leave.startDate);
 }
 
 /** PDF-ul stocat, dacă e generat cu șablonul curent și Storage răspunde; altfel null. */
