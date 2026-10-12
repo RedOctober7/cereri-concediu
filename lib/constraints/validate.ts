@@ -64,34 +64,6 @@ async function getActiveConstraints(workPointId: string | null) {
   });
 }
 
-async function countOverlappingApprovedLeaves(
-  workPointId: string,
-  startDate: Date,
-  endDate: Date,
-  excludeUserId: string
-) {
-  return prisma.leaveRequest.count({
-    where: {
-      user: { workPointId, active: true, deletedAt: null },
-      userId: { not: excludeUserId },
-      status: { in: [LeaveStatus.APPROVED_AUTO, LeaveStatus.APPROVED_ADMIN] },
-      startDate: { lte: endDate },
-      endDate: { gte: startDate },
-    },
-  });
-}
-
-async function countActiveUsersAtWorkPoint(workPointId: string) {
-  return prisma.user.count({
-    where: {
-      workPointId,
-      active: true,
-      deletedAt: null,
-      role: "EMPLOYEE",
-    },
-  });
-}
-
 type LeaveInterval = { startDate: Date; endDate: Date; workingDays: number };
 
 const daysFormatter = new Intl.NumberFormat("ro-RO", { maximumFractionDigits: 2 });
@@ -280,42 +252,11 @@ export async function validateLeaveRequest(
         }
         break;
       }
-      case ConstraintType.MAX_CONSECUTIVE_DAYS: {
-        if (workingDays > config.days) {
-          violations.push(
-            `Maxim ${config.days} zile consecutive permise (solicitate: ${workingDays})`
-          );
-        }
-        break;
-      }
       case ConstraintType.BLACKOUT_MONTH: {
         if (intervalIntersectsMonth(start, end, config.month)) {
           violations.push(
             `Luna ${monthName(config.month)} este perioadă restricționată`
           );
-        }
-        break;
-      }
-      case ConstraintType.MAX_CONCURRENT_PERCENT: {
-        if (user.workPointId) {
-          const overlapping = await countOverlappingApprovedLeaves(
-            user.workPointId,
-            start,
-            end,
-            userId
-          );
-          const totalAtWorkPoint = await countActiveUsersAtWorkPoint(
-            user.workPointId
-          );
-          if (totalAtWorkPoint > 0) {
-            const projectedPercent =
-              ((overlapping + 1) / totalAtWorkPoint) * 100;
-            if (projectedPercent > config.percent) {
-              violations.push(
-                `Maxim ${config.percent}% din echipă poate fi simultan în concediu (s-ar depăși: ${projectedPercent.toFixed(1)}%)`
-              );
-            }
-          }
         }
         break;
       }

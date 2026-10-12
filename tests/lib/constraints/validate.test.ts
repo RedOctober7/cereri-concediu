@@ -137,23 +137,16 @@ describe("validateLeaveRequest", () => {
     it("regulile active ale angajatului", async () => {
       db.constraint.findMany.mockResolvedValue([
         constraint(ConstraintType.MIN_NOTICE_DAYS, { days: 10 }),
-        constraint(ConstraintType.MAX_CONSECUTIVE_DAYS, { days: 3 }),
         constraint(ConstraintType.BLACKOUT_MONTH, { month: 10 }),
-        constraint(ConstraintType.MAX_CONCURRENT_PERCENT, { percent: 25 }),
         constraint(ConstraintType.MIN_ONE_VACATION_OF_N_DAYS, { days: 10 }),
       ]);
-      db.leaveRequest.count.mockResolvedValue(1);
-      db.user.count.mockResolvedValue(4);
-
       const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
 
       expect(result.blockingError).toBeNull();
       expect(result.needsAdminApproval).toBe(true);
       expect(result.violations).toEqual([
         "Preaviz minim 10 zile lucrătoare (cererea trebuia depusă cu cel puțin 10 zile înainte)",
-        "Maxim 3 zile consecutive permise (solicitate: 5)",
         "Luna Octombrie este perioadă restricționată",
-        "Maxim 25% din echipă poate fi simultan în concediu (s-ar depăși: 50.0%)",
       ]);
       expect(db.constraint.findMany).toHaveBeenCalledWith({
         where: {
@@ -166,26 +159,14 @@ describe("validateLeaveRequest", () => {
     it("regulile respectate nu produc încălcări", async () => {
       db.constraint.findMany.mockResolvedValue([
         constraint(ConstraintType.MIN_NOTICE_DAYS, { days: 5 }),
-        constraint(ConstraintType.MAX_CONSECUTIVE_DAYS, { days: 10 }),
         constraint(ConstraintType.BLACKOUT_MONTH, { month: 12 }),
-        constraint(ConstraintType.MAX_CONCURRENT_PERCENT, { percent: 50 }),
       ]);
-      db.leaveRequest.count.mockResolvedValue(0);
 
       const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
       expect(result.violations).toEqual([]);
       expect(result.needsAdminApproval).toBe(false);
     });
 
-    it("procentul simultan se aplică doar angajaților cu punct de lucru", async () => {
-      db.user.findUnique.mockResolvedValue(activeUser({ workPointId: null, workPoint: null }));
-      db.constraint.findMany.mockResolvedValue([
-        constraint(ConstraintType.MAX_CONCURRENT_PERCENT, { percent: 1 }),
-      ]);
-      const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
-      expect(result.violations).toEqual([]);
-      expect(db.leaveRequest.count).not.toHaveBeenCalled();
-    });
   });
 
   describe("concediu neîntrerupt anual (MIN_ONE_VACATION_OF_N_DAYS, Codul muncii art. 148)", () => {

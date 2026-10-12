@@ -240,7 +240,6 @@ export async function seedDemo(prisma: DemoClient, now: Date = new Date()) {
     data: [
       { scope: ConstraintScope.GLOBAL, type: ConstraintType.MIN_NOTICE_DAYS, config: { days: 5 } },
       { scope: ConstraintScope.GLOBAL, type: ConstraintType.MIN_ONE_VACATION_OF_N_DAYS, config: { days: 10 } },
-      { scope: ConstraintScope.WORK_POINT, type: ConstraintType.MAX_CONCURRENT_PERCENT, workPointId: workPoints[0].id, config: { percent: 50 } },
       { scope: ConstraintScope.WORK_POINT, type: ConstraintType.BLACKOUT_MONTH, workPointId: workPoints[2].id, config: { month: 12 } },
     ],
   });

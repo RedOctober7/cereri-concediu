@@ -6,7 +6,6 @@ import type { ConstraintScope, ConstraintType } from "@prisma/client";
 import {
   CalendarClock,
   CalendarOff,
-  CalendarRange,
   Globe,
   Info,
   Loader2,
@@ -17,7 +16,6 @@ import {
   PowerOff,
   Trash2,
   TreePalm,
-  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -75,9 +73,7 @@ export type ConstraintRow = {
 
 const TYPE_ICONS: Record<ConstraintType, LucideIcon> = {
   MIN_NOTICE_DAYS: CalendarClock,
-  MAX_CONSECUTIVE_DAYS: CalendarRange,
   BLACKOUT_MONTH: CalendarOff,
-  MAX_CONCURRENT_PERCENT: UsersRound,
   MIN_ONE_VACATION_OF_N_DAYS: TreePalm,
 };
 

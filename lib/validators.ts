@@ -220,13 +220,6 @@ function constraintDaysSchema() {
  * sunt eliminate, ca în bază să ajungă doar ce citește lib/constraints/validate.ts.
  */
 export const constraintConfigSchemas = {
-  MAX_CONCURRENT_PERCENT: z.object({
-    percent: z
-      .number({ error: "Procentul trebuie să fie un număr" })
-      .int("Procentul trebuie să fie un număr întreg")
-      .min(1, "Procentul trebuie să fie între 1 și 100")
-      .max(100, "Procentul trebuie să fie între 1 și 100"),
-  }),
   MIN_NOTICE_DAYS: z.object({ days: constraintDaysSchema() }),
   BLACKOUT_MONTH: z.object({
     month: z
@@ -235,7 +228,6 @@ export const constraintConfigSchemas = {
       .min(1, "Alege luna")
       .max(12, "Alege luna"),
   }),
-  MAX_CONSECUTIVE_DAYS: z.object({ days: constraintDaysSchema() }),
   MIN_ONE_VACATION_OF_N_DAYS: z.object({ days: constraintDaysSchema() }),
 } satisfies Record<ConstraintType, z.ZodType>;
 

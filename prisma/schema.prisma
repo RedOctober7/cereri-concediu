@@ -27,10 +27,8 @@ enum ConstraintScope {
 }
 
 enum ConstraintType {
-  MAX_CONCURRENT_PERCENT
   MIN_NOTICE_DAYS
   BLACKOUT_MONTH
-  MAX_CONSECUTIVE_DAYS
   MIN_ONE_VACATION_OF_N_DAYS
 }
 
