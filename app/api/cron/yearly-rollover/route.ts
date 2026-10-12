@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { LeaveStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { verifyCronRequest } from '@/lib/cron-auth';
+import { adjustAvailableDays } from '@/lib/leaves/balance';
 import {
   YEARLY_ROLLOVER_ACTION,
   expiryDeadline,
@@ -159,11 +160,7 @@ export async function GET(req: NextRequest) {
         // Un rând de audit pe an expirat, în aceeași tranzacție cu scăderea din sold.
         for (const step of planned) {
           if (step.expiredDays > 0) {
-            await tx.user.update({
-              where: { id },
-              data: { availableDays: { decrement: step.expiredDays } },
-              select: { id: true },
-            });
+            await adjustAvailableDays(tx, id, -step.expiredDays);
           }
 
           await tx.auditLog.create({

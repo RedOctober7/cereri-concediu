@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { notifyLeaveApproved } from '@/lib/emails/leave-notifications';
 import { createAuditLog } from '@/lib/audit/log';
 import { calculateWorkingDays } from '@/lib/holidays';
+import { adjustAvailableDays } from '@/lib/leaves/balance';
 
 const NOT_PENDING_MESSAGE = 'Cererea nu mai este în așteptare.';
 
@@ -128,14 +129,7 @@ export async function POST(
           throw new Error('LEAVE_NOT_PENDING');
         }
 
-        await tx.user.update({
-          where: { id: leaveRequest.userId },
-          data: {
-            availableDays: {
-              decrement: workingDays,
-            },
-          },
-        });
+        await adjustAvailableDays(tx, leaveRequest.userId, -workingDays);
 
         return {
           updatedRequest: await tx.leaveRequest.findUniqueOrThrow({ where: { id } }),

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { verifyCronRequest } from '@/lib/cron-auth';
+import { adjustAvailableDays } from '@/lib/leaves/balance';
 import { todayInBucharest, utcDate } from '@/lib/dates';
 
 // Un angajat înseamnă câteva interogări; lăsăm timp pentru firme mai mari.
@@ -62,11 +63,7 @@ export async function GET(req: NextRequest) {
           },
           select: { id: true },
         }),
-        prisma.user.update({
-          where: { id: user.id },
-          data: { availableDays: { increment: 1.75 } },
-          select: { id: true },
-        }),
+        adjustAvailableDays(prisma, user.id, 1.75),
       ]);
 
       accrued++;

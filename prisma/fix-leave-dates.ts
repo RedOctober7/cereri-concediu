@@ -4,6 +4,7 @@ config({ quiet: true });
 import { LeaveStatus, PrismaClient, type Prisma } from "@prisma/client";
 import { addDaysUTC, parseDateOnly, toDateOnlyString } from "@/lib/dates";
 import { calculateWorkingDays, datesOverlap } from "@/lib/holidays";
+import { adjustAvailableDays } from "@/lib/leaves/balance";
 
 const prisma = new PrismaClient();
 
@@ -357,10 +358,7 @@ async function applyForUser(userId: string, before: Date) {
       }
 
       if (balanceDelta !== 0) {
-        await tx.user.update({
-          where: { id: userId },
-          data: { availableDays: { increment: balanceDelta } },
-        });
+        await adjustAvailableDays(tx, userId, balanceDelta);
       }
 
       return { changed: changes.length, balanceDelta };
