@@ -254,7 +254,14 @@ export function AuditLogView({
       />
 
       <Card className="gap-0 py-0">
-        <Filters query={query} actorOptions={actorOptions} otherActions={otherActions} />
+        {/* Câmpurile sunt necontrolate (defaultValue): cheia le reîncarcă din URL când
+            filtrele se schimbă prin „Resetează”, un chip sau butonul Înapoi. */}
+        <Filters
+          key={[query.action, query.actor, query.from, query.to, query.target].join("|")}
+          query={query}
+          actorOptions={actorOptions}
+          otherActions={otherActions}
+        />
 
         {targetName || rangeInvalid ? (
           <div className="space-y-3 border-b p-4">

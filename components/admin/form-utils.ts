@@ -44,7 +44,7 @@ const SERVER_ERROR = "A apărut o eroare. Reîncearcă în câteva momente.";
  * fetch + JSON pentru rutele /api/admin: erorile au forma { error: string }, iar un
  * răspuns care nu e JSON (ex. o pagină de eroare a platformei) devine un mesaj generic.
  */
-const UNEXPECTED_RESPONSE_ERROR =
+export const UNEXPECTED_RESPONSE_ERROR =
   "Serverul a răspuns neașteptat. Reîncarcă pagina; dacă problema continuă, deconectează-te și autentifică-te din nou.";
 
 export async function apiRequest<T = unknown>(

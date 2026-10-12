@@ -70,7 +70,7 @@ export type UserDetail = {
   hireDate: string;
   workPointId: string | null;
   workPointName: string | null;
-  /** updatedAt (ISO): formularul de editare se remontează cu valorile noi după salvare. */
+  /** Valorile câmpurilor editabile: formularul se remontează doar când se schimbă ele (ex. după salvare). */
   version: string;
 };
 

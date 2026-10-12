@@ -161,7 +161,20 @@ export default async function UserDetailPage({
     hireDate: toDateOnlyString(user.hireDate),
     workPointId: user.workPointId,
     workPointName: user.workPoint?.name ?? null,
-    version: user.updatedAt.toISOString(),
+    // Doar câmpurile din formularul de editare: o ajustare de sold, o resetare de parolă
+    // sau schimbarea statusului nu trebuie să remonteze formularul (s-ar pierde ce
+    // adminul a scris și nu a salvat încă).
+    version: JSON.stringify([
+      user.firstName,
+      user.lastName,
+      user.email,
+      user.username,
+      user.jobTitle,
+      user.employer,
+      user.workPointId,
+      toDateOnlyString(user.hireDate),
+      user.initialLeaveDays,
+    ]),
   };
 
   const collator = new Intl.Collator("ro", { sensitivity: "base" });
