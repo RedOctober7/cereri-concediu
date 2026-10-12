@@ -38,7 +38,7 @@ export default async function DashboardPage() {
             Bun venit, {session?.user?.name ?? "angajat"}!
           </p>
         </div>
-        <Button className="h-11 gap-2" render={<Link href="/cereri/noua" />}>
+        <Button className="h-11 gap-2" nativeButton={false} render={<Link href="/cereri/noua" />}>
           <CalendarPlus className="size-4" />
           Cerere nouă
         </Button>
@@ -108,7 +108,7 @@ export default async function DashboardPage() {
               </div>
             ))
           )}
-          <Button variant="outline" className="w-full sm:w-auto" render={<Link href="/cereri" />}>
+          <Button variant="outline" className="w-full sm:w-auto" nativeButton={false} render={<Link href="/cereri" />}>
             Vezi toate cererile
           </Button>
         </CardContent>

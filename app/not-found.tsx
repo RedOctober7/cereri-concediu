@@ -8,7 +8,7 @@ export default function NotFound() {
       <p className="text-muted-foreground">
         Adresa accesată nu există sau a fost mutată.
       </p>
-      <Button render={<Link href="/" />}>Înapoi acasă</Button>
+      <Button nativeButton={false} render={<Link href="/" />}>Înapoi acasă</Button>
     </div>
   );
 }
