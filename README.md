@@ -88,8 +88,16 @@ npm run dev
 Pentru date de test realiste, pe o bază separată:
 
 ```bash
+# bash / macOS / Linux
 DEMO_MODE=true NEXT_PUBLIC_DEMO_MODE=true npm run db:seed-demo   # ȘTERGE baza
 ```
+
+```powershell
+# Windows (PowerShell)
+$env:DEMO_MODE = "true"; $env:NEXT_PUBLIC_DEMO_MODE = "true"; npm run db:seed-demo   # ȘTERGE baza
+```
+
+Variabilele pot fi puse și în `.env.local` (`DEMO_MODE=true`, `NEXT_PUBLIC_DEMO_MODE=true`), care funcționează la fel pe orice sistem.
 
 Scriptul creează 3 puncte de lucru, 10 angajați și cereri în toate stările. Cu `NEXT_PUBLIC_DEMO_MODE=true`, pagina de login afișează butoanele „Intră ca administrator” și „Intră ca angajat” (`admin.demo` / `angajat.demo`, parola `Demo2026!`). În modul demo, conturile demo nu pot fi dezactivate și parola lor nu poate fi schimbată.
 
