@@ -18,6 +18,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-demo": "tsx prisma/seed-demo.ts",
     "db:reset-password": "tsx prisma/reset-password.ts",
+    "db:create-employee": "tsx prisma/create-employee.ts",
     "db:fix-leave-dates": "tsx prisma/fix-leave-dates.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
