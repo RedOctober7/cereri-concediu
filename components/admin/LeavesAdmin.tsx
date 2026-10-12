@@ -321,10 +321,20 @@ export function LeavesAdmin({
           action === "reject" ? { rejectionReason: trimmedReason } : { allowNegativeBalance }
         ),
       });
-      const data = (await res.json().catch(() => ({}))) as ApiResult;
+      // O sesiune expirată e redirecționată (de proxy) spre /login, care răspunde 200 cu
+      // HTML: fără verificarea asta am afișa „aprobată” deși nu s-a întâmplat nimic.
+      const data = res.redirected
+        ? null
+        : ((await res.json().catch(() => null)) as ApiResult | null);
+      if (res.ok && (data === null || typeof data !== "object")) {
+        toast.error(
+          "Sesiunea a expirat sau serverul a răspuns neașteptat. Reîncarcă pagina și autentifică-te din nou."
+        );
+        return;
+      }
 
-      if (!res.ok) {
-        toast.error(data.error ?? "A apărut o eroare. Reîncearcă.");
+      if (!res.ok || !data) {
+        toast.error(data?.error ?? "A apărut o eroare. Reîncearcă.");
         // 4xx = cererea s-a schimbat între timp (sau nu mai există): închidem și reîncărcăm.
         if (res.status < 500) {
           setApproveRow(null);
