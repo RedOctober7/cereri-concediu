@@ -254,7 +254,7 @@ export async function confirmPasswordReset(
           // Conturile demo de pe pagina de login rămân cu parola publică.
           ...(isDemoMode() ? { username: { notIn: DEMO_PROTECTED_USERNAMES } } : {}),
         },
-        data: { passwordHash, mustChangePassword: false },
+        data: { passwordHash, mustChangePassword: false, sessionVersion: { increment: 1 } },
       });
       if (updated.count !== 1) {
         throw new ResetRejected();

@@ -207,7 +207,8 @@ export async function PATCH(request: Request, context: RouteContext) {
               }
             : {}),
           ...(parsed.data.active !== undefined ? { active: parsed.data.active } : {}),
-          ...(passwordHash ? { passwordHash } : {}),
+          // O parolă nouă închide sesiunile deschise ale contului.
+          ...(passwordHash ? { passwordHash, sessionVersion: { increment: 1 } } : {}),
           ...(parsed.data.forcePasswordReset !== undefined
             ? { mustChangePassword: parsed.data.forcePasswordReset }
             : {}),

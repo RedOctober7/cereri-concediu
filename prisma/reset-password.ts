@@ -39,6 +39,7 @@ async function main() {
     data: {
       passwordHash: await bcrypt.hash(newPassword, 12),
       mustChangePassword: true,
+      sessionVersion: { increment: 1 },
     },
   });
 

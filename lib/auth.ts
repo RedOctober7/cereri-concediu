@@ -77,6 +77,7 @@ export const authOptions: NextAuthOptions = {
           name: `${user.firstName} ${user.lastName}`,
           role: user.role,
           mustChangePassword: user.mustChangePassword,
+          sessionVersion: user.sessionVersion,
         };
       },
     }),
@@ -95,6 +96,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
         token.mustChangePassword = user.mustChangePassword;
+        token.sessionVersion = user.sessionVersion;
         token.checkedAt = Date.now();
         return token;
       }
@@ -122,6 +124,7 @@ export const authOptions: NextAuthOptions = {
                 mustChangePassword: true,
                 active: true,
                 deletedAt: true,
+                sessionVersion: true,
               },
             })
           : null;
@@ -138,6 +141,12 @@ export const authOptions: NextAuthOptions = {
         // (getServerSession dă null) și să șteargă cookie-ul la /api/auth/session
         // (JWT_SESSION_ERROR), deci utilizatorul ajunge delogat.
         throw new Error("Contul nu mai este activ.");
+      }
+
+      // Parola s-a schimbat după emiterea acestui token (de utilizator, prin email sau de
+      // un admin): sesiunea veche se închide, inclusiv una deschisă de altcineva.
+      if (dbUser.sessionVersion !== (token.sessionVersion ?? 0)) {
+        throw new Error("Parola contului a fost schimbată.");
       }
 
       token.role = dbUser.role;

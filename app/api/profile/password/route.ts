@@ -63,6 +63,8 @@ export async function POST(request: Request) {
       data: {
         passwordHash,
         mustChangePassword: false,
+        // Închide celelalte sesiuni (și pe cea curentă: formularul cere relogarea).
+        sessionVersion: { increment: 1 },
       },
     });
 

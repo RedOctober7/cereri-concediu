@@ -48,6 +48,8 @@ model User {
   initialLeaveDays   Float      @default(0)
   availableDays      Float      @default(0)
   mustChangePassword Boolean    @default(false)
+  /// Crește la fiecare schimbare de parolă: sesiunile emise înainte devin invalide.
+  sessionVersion     Int        @default(0)
   active             Boolean    @default(true)
   deletedAt          DateTime?
   createdAt          DateTime   @default(now())
