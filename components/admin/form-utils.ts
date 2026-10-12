@@ -44,6 +44,9 @@ const SERVER_ERROR = "A apărut o eroare. Reîncearcă în câteva momente.";
  * fetch + JSON pentru rutele /api/admin: erorile au forma { error: string }, iar un
  * răspuns care nu e JSON (ex. o pagină de eroare a platformei) devine un mesaj generic.
  */
+const UNEXPECTED_RESPONSE_ERROR =
+  "Serverul a răspuns neașteptat. Reîncarcă pagina; dacă problema continuă, deconectează-te și autentifică-te din nou.";
+
 export async function apiRequest<T = unknown>(
   url: string,
   init: { method: string; body?: unknown }
@@ -73,6 +76,13 @@ export async function apiRequest<T = unknown>(
       field: typeof payload.field === "string" ? payload.field : undefined,
       status: response.status,
     };
+  }
+
+  // Un răspuns „reușit” fără JSON (de ex. o redirecționare spre o pagină, când sesiunea
+  // a expirat sau parola trebuie schimbată) nu e un succes: altfel apelantul ar folosi
+  // `data` nedefinit.
+  if (response.redirected || !("data" in payload)) {
+    return { ok: false, error: UNEXPECTED_RESPONSE_ERROR, status: response.status };
   }
 
   return {
