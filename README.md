@@ -130,4 +130,4 @@ CI-ul (`.github/workflows/ci.yml`) rulează la fiecare push lint-ul, verificarea
 
 ## Autor
 
-**Astefanei Razvan** · [GitHub](https://github.com/RedOctober7)
+**Astefanei Razvan** · [LinkedIn](https://www.linkedin.com/in/razvan-astefanei-5b64ba32b/) · [GitHub](https://github.com/RedOctober7)
