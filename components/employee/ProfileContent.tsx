@@ -1,7 +1,8 @@
 "use client";
 
-import { format } from "date-fns";
-import { ro } from "date-fns/locale";
+import { formatInTimeZone } from "date-fns-tz";
+import { APP_TIME_ZONE } from "@/lib/dates";
+import { formatDay, formatDays, formatMonthYear } from "@/components/admin/format";
 import { ChangePasswordForm } from "@/components/auth/ChangePasswordForm";
 import {
   Card,
@@ -27,21 +28,6 @@ type Accrual = {
   days: number;
   createdAt: Date;
 };
-
-const MONTH_NAMES = [
-  "Ianuarie",
-  "Februarie",
-  "Martie",
-  "Aprilie",
-  "Mai",
-  "Iunie",
-  "Iulie",
-  "August",
-  "Septembrie",
-  "Octombrie",
-  "Noiembrie",
-  "Decembrie",
-];
 
 export function ProfileContent({
   user,
@@ -87,7 +73,7 @@ export function ProfileContent({
           <div>
             <p className="text-muted-foreground">Data angajării</p>
             <p className="font-medium">
-              {format(user.hireDate, "dd.MM.yyyy", { locale: ro })}
+              {formatDay(user.hireDate)}
             </p>
           </div>
         </CardContent>
@@ -126,11 +112,12 @@ export function ProfileContent({
                   {accruals.map((accrual) => (
                     <tr key={`${accrual.year}-${accrual.month}`} className="border-b">
                       <td className="py-2 pr-4">
-                        {MONTH_NAMES[accrual.month - 1]} {accrual.year}
+                        {formatMonthYear(accrual.month, accrual.year)}
                       </td>
-                      <td className="py-2 pr-4">{accrual.days.toFixed(2)}</td>
+                      <td className="py-2 pr-4">{formatDays(accrual.days)}</td>
                       <td className="py-2">
-                        {format(accrual.createdAt, "dd.MM.yyyy", { locale: ro })}
+                        {/* Momentul, în ora României: la fel pe server (UTC) și în browser. */}
+                        {formatInTimeZone(accrual.createdAt, APP_TIME_ZONE, "dd.MM.yyyy")}
                       </td>
                     </tr>
                   ))}

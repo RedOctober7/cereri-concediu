@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { ro } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
+import { todayInBucharest } from "@/lib/dates";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
@@ -33,11 +34,13 @@ export function LeaveCalendar({
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [month, setMonth] = useState(() => new Date(year, new Date().getMonth(), 1));
+  // „Azi” în ora României (ca serverul), nu în fusul orar al procesului: altfel randarea
+  // pe server (UTC) și cea din browser ar diferi după miezul nopții.
   const today = useMemo(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const bucharest = todayInBucharest();
+    return new Date(bucharest.getUTCFullYear(), bucharest.getUTCMonth(), bucharest.getUTCDate());
   }, []);
+  const [month, setMonth] = useState(() => new Date(year, today.getMonth(), 1));
 
   useEffect(() => {
     let cancelled = false;

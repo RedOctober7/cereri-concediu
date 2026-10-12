@@ -307,7 +307,7 @@ function AdjustmentHistory({
               </div>
               <p className="break-words">{adjustment.reason}</p>
               <p className="text-xs text-muted-foreground">
-                Sold după: {formatDays(adjustment.after)} zile
+                Sold după: {pluralRo(adjustment.after, "zi", "zile")}
                 {adjustment.actorName ? ` · ${adjustment.actorName}` : ""}
               </p>
             </li>

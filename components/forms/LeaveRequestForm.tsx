@@ -9,6 +9,7 @@ import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { formatDays } from "@/components/admin/format";
+import { todayInBucharest } from "@/lib/dates";
 import { LeaveCalendar } from "@/components/calendar/LeaveCalendar";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,7 +45,7 @@ export function LeaveRequestForm({
   initialAvailableDays: number;
 }) {
   const router = useRouter();
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [year, setYear] = useState(() => todayInBucharest().getUTCFullYear());
   const [range, setRange] = useState<DateRange | undefined>();
   const [preview, setPreview] = useState<ValidationPreview | null>(null);
   const [previewError, setPreviewError] = useState<PreviewError | null>(null);

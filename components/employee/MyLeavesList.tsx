@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import { pluralRo } from "@/components/admin/format";
 import { ro } from "date-fns/locale";
 import type { LeaveRequest, LeaveStatus } from "@prisma/client";
 import { Download, Loader2 } from "lucide-react";
@@ -143,7 +144,7 @@ export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                {leave.workingDays} zile lucrătoare
+                {pluralRo(leave.workingDays, "zi lucrătoare", "zile lucrătoare")}
               </p>
             </div>
             <div className="mt-3 flex flex-wrap gap-2 md:mt-0">
@@ -186,7 +187,7 @@ export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
                       <AlertDialogTitle>Anulezi cererea?</AlertDialogTitle>
                       <AlertDialogDescription>
                         {isApprovedStatus(leave.status as LeaveStatus)
-                          ? `Concediul aprobat va fi anulat, iar cele ${leave.workingDays} zile lucrătoare se întorc în soldul tău. Acțiunea nu poate fi refăcută.`
+                          ? `Concediul aprobat va fi anulat, iar zilele lui (${pluralRo(leave.workingDays, "zi lucrătoare", "zile lucrătoare")}) se întorc în soldul tău. Acțiunea nu poate fi refăcută.`
                           : "Cererea va fi marcată ca anulată. Acțiunea nu poate fi refăcută."}
                       </AlertDialogDescription>
                     </AlertDialogHeader>

@@ -59,6 +59,7 @@ import {
 } from "@/lib/constraints/types";
 import { constraintCreateSchema } from "@/lib/validators";
 import { cn } from "@/lib/utils";
+import { pluralRo } from "@/components/admin/format";
 
 type WorkPoint = { id: string; name: string; active: boolean };
 
@@ -483,7 +484,7 @@ export function ConstraintsAdmin({
         title="Reguli"
         description={
           constraints.length > 0
-            ? `${activeCount} din ${constraints.length} reguli sunt active.`
+            ? `Active: ${activeCount} din ${pluralRo(constraints.length, "regulă", "reguli")}.`
             : "Condițiile verificate la fiecare cerere de concediu."
         }
         actions={

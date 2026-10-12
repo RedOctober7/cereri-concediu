@@ -160,7 +160,7 @@ describe("validateLeaveRequest", () => {
 
       expect(result.blockingError).toBeNull();
       expect(result.violations).toEqual([
-        "Preaviz minim 10 zile lucrătoare (cererea trebuia depusă cu cel puțin 10 zile înainte)",
+        "Preaviz minim 10 zile lucrătoare (cererea trebuia depusă cu cel puțin 10 zile lucrătoare înainte)",
         "Luna Octombrie este perioadă restricționată",
       ]);
       expect(db.constraint.findMany).toHaveBeenCalledWith({

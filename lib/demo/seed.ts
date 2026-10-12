@@ -192,7 +192,7 @@ export async function seedDemo(prisma: DemoClient, now: Date = new Date()) {
     { user: 5, offsetDays: 7, workingDays: 5, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 6 },
     { user: 0, offsetDays: 21, workingDays: 3, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 4 },
     // În așteptarea deciziei adminului.
-    { user: 3, offsetDays: 1, workingDays: 3, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 0, violations: ["Preaviz minim 5 zile lucrătoare (cererea trebuia depusă cu cel puțin 5 zile înainte)"] },
+    { user: 3, offsetDays: 1, workingDays: 3, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 0, violations: ["Preaviz minim 5 zile lucrătoare (cererea trebuia depusă cu cel puțin 5 zile lucrătoare înainte)"] },
     { user: 6, offsetDays: 20, workingDays: 8, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 2, violations: ["Cererea depășește zilele disponibile (7 disponibile, 8 solicitate)"] },
     { user: 9, offsetDays: daysUntilDecember8(today), workingDays: 5, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 1, violations: ["Luna Decembrie este perioadă restricționată"] },
     // Respinse și anulate.

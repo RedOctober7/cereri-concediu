@@ -68,6 +68,13 @@ type LeaveInterval = { startDate: Date; endDate: Date; workingDays: number };
 
 const daysFormatter = new Intl.NumberFormat("ro-RO", { maximumFractionDigits: 2 });
 
+/** „1 zi lucrătoare”, „5 zile lucrătoare”, „20 de zile lucrătoare”. */
+function workingDaysText(count: number): string {
+  if (count === 1) return "1 zi lucrătoare";
+  const lastTwo = count % 100;
+  return `${count} ${lastTwo === 0 || lastTwo >= 20 ? "de " : ""}zile lucrătoare`;
+}
+
 /**
  * Intervale de concediu lipite: între două cereri nu există nicio zi lucrătoare (ex.
  * luni–vineri și luni–vineri din săptămâna următoare) formează un singur concediu
@@ -168,7 +175,7 @@ async function uninterruptedVacationViolation({
     return null;
   }
 
-  return `În ${year} nu există încă un concediu neîntrerupt de cel puțin ${minDays} zile lucrătoare, iar după această cerere ar rămâne ${daysFormatter.format(after)} zile disponibile (Codul muncii, art. 148)`;
+  return `În ${year} nu există încă un concediu neîntrerupt de cel puțin ${workingDaysText(minDays)}, iar după această cerere ar rămâne ${daysFormatter.format(after)} zile disponibile (Codul muncii, art. 148)`;
 }
 
 function blocked(blockingError: string, workingDays: number): ValidationResult {
@@ -256,7 +263,7 @@ export async function validateLeaveRequest(
         const minDate = addWorkingDays(today, config.days);
         if (start < minDate) {
           violations.push(
-            `Preaviz minim ${config.days} zile lucrătoare (cererea trebuia depusă cu cel puțin ${config.days} zile înainte)`
+            `Preaviz minim ${workingDaysText(config.days)} (cererea trebuia depusă cu cel puțin ${workingDaysText(config.days)} înainte)`
           );
         }
         break;
