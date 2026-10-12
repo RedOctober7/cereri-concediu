@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +19,7 @@ export function ChangePasswordForm() {
   const router = useRouter();
   const { data: session, update } = useSession();
   const [isLoading, setIsLoading] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const {
     register,
@@ -46,10 +47,26 @@ export function ChangePasswordForm() {
         return;
       }
 
-      await update({ mustChangePassword: false });
-      toast.success("Parola a fost schimbată cu succes.");
+      // Fără payload: serverul recitește mustChangePassword din baza de date.
+      const updated = await update();
       reset();
-      router.push(session?.user?.role === "ADMIN" ? "/admin" : "/dashboard");
+
+      // Dacă sesiunea nu a putut fi reîmprospătată, cookie-ul vechi (cu
+      // mustChangePassword) ne-ar trimite înapoi aici; parola e deja schimbată,
+      // deci delogăm și cerem autentificare cu parola nouă.
+      if (!updated?.user || updated.user.mustChangePassword) {
+        toast.success(
+          "Parola a fost schimbată. Autentifică-te din nou cu parola nouă."
+        );
+        // Fără reîncărcare completă, ca mesajul să rămână vizibil pe pagina de login.
+        await signOut({ callbackUrl: "/login", redirect: false });
+        router.replace("/login");
+        router.refresh();
+        return;
+      }
+
+      toast.success("Parola a fost schimbată cu succes.");
+      router.push(updated.user.role === "ADMIN" ? "/admin" : "/dashboard");
       router.refresh();
     } catch {
       toast.error(
@@ -123,6 +140,21 @@ export function ChangePasswordForm() {
           "Salvează parola"
         )}
       </Button>
+
+      <p className="text-center text-sm text-muted-foreground">
+        {session?.user?.name ? `Conectat ca ${session.user.name}. ` : null}
+        <button
+          type="button"
+          className="font-medium text-foreground underline underline-offset-4 hover:text-primary disabled:opacity-50"
+          disabled={isLoading || signingOut}
+          onClick={() => {
+            setSigningOut(true);
+            void signOut({ callbackUrl: "/login" }).catch(() => setSigningOut(false));
+          }}
+        >
+          {signingOut ? "Se deconectează..." : "Deconectează-te"}
+        </button>
+      </p>
     </form>
   );
 }

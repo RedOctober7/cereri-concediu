@@ -8,6 +8,7 @@ import type { DateRange } from "react-day-picker";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { formatDays } from "@/components/admin/format";
 import { LeaveCalendar } from "@/components/calendar/LeaveCalendar";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,18 @@ type ValidationPreview = {
   availableDays: number;
 };
 
+type PreviewError = {
+  message: string;
+  /**
+   * 400 de la /api/leaves/validate: POST aplică aceleași reguli și ar respinge
+   * cererea. Alte erori (401, 500, rețea) nu spun nimic despre perioadă.
+   */
+  blocksSubmit: boolean;
+};
+
+const PREVIEW_FAILED_MESSAGE =
+  "Nu s-a putut verifica perioada. Reîncearcă în câteva momente.";
+
 export function LeaveRequestForm({
   initialAvailableDays,
 }: {
@@ -35,10 +48,19 @@ export function LeaveRequestForm({
   const [year, setYear] = useState(new Date().getFullYear());
   const [range, setRange] = useState<DateRange | undefined>();
   const [preview, setPreview] = useState<ValidationPreview | null>(null);
+  const [previewError, setPreviewError] = useState<PreviewError | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const hasCompleteRange = Boolean(range?.from && range?.to);
+
+  function onRangeSelect(next: DateRange | undefined) {
+    setRange(next);
+    // Rezultatul anterior era pentru altă perioadă; nu-l mai afișăm cât timp
+    // se verifică perioada nouă.
+    setPreview(null);
+    setPreviewError(null);
+  }
 
   useEffect(() => {
     if (!range?.from || !range?.to) {
@@ -50,8 +72,8 @@ export function LeaveRequestForm({
       setLoadingPreview(true);
       try {
         const params = new URLSearchParams({
-          startDate: range.from!.toISOString(),
-          endDate: range.to!.toISOString(),
+          startDate: format(range.from!, "yyyy-MM-dd"),
+          endDate: format(range.to!, "yyyy-MM-dd"),
         });
         const res = await fetch(`/api/leaves/validate?${params}`, {
           signal: controller.signal,
@@ -60,14 +82,32 @@ export function LeaveRequestForm({
           data?: ValidationPreview;
           error?: string;
         };
+        if (controller.signal.aborted) {
+          return;
+        }
         if (res.ok && body.data) {
           setPreview(body.data);
+          setPreviewError(null);
+        } else if (res.status === 400) {
+          setPreview(null);
+          setPreviewError({
+            message: body.error ?? "Perioada selectată nu este validă.",
+            blocksSubmit: true,
+          });
         } else {
           setPreview(null);
+          setPreviewError({
+            message: PREVIEW_FAILED_MESSAGE,
+            blocksSubmit: false,
+          });
         }
       } catch {
         if (!controller.signal.aborted) {
           setPreview(null);
+          setPreviewError({
+            message: PREVIEW_FAILED_MESSAGE,
+            blocksSubmit: false,
+          });
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -79,6 +119,8 @@ export function LeaveRequestForm({
     return () => {
       clearTimeout(timeout);
       controller.abort();
+      // Cererea anulată nu mai ajunge în finally cu setLoadingPreview(false).
+      setLoadingPreview(false);
     };
   }, [range?.from, range?.to]);
 
@@ -94,8 +136,8 @@ export function LeaveRequestForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          startDate: range.from.toISOString(),
-          endDate: range.to.toISOString(),
+          startDate: format(range.from, "yyyy-MM-dd"),
+          endDate: format(range.to, "yyyy-MM-dd"),
         }),
       });
       const body = (await res.json()) as { error?: string; message?: string };
@@ -126,7 +168,7 @@ export function LeaveRequestForm({
         <CardContent>
           <LeaveCalendar
             selected={range}
-            onSelect={setRange}
+            onSelect={onRangeSelect}
             year={year}
             onYearChange={setYear}
           />
@@ -154,7 +196,7 @@ export function LeaveRequestForm({
             <p className="text-sm">
               <span className="text-muted-foreground">Zile disponibile: </span>
               <strong>
-                {(preview?.availableDays ?? initialAvailableDays).toFixed(2)}
+                {formatDays(preview?.availableDays ?? initialAvailableDays)}
               </strong>
             </p>
 
@@ -163,6 +205,20 @@ export function LeaveRequestForm({
                 <Loader2 className="size-4 animate-spin" />
                 Se verifică regulile...
               </div>
+            ) : null}
+
+            {hasCompleteRange && previewError ? (
+              <Alert
+                variant={previewError.blocksSubmit ? "destructive" : "default"}
+              >
+                <AlertCircle className="size-4" />
+                <AlertTitle>
+                  {previewError.blocksSubmit
+                    ? "Cererea nu poate fi trimisă"
+                    : "Verificarea nu este disponibilă"}
+                </AlertTitle>
+                <AlertDescription>{previewError.message}</AlertDescription>
+              </Alert>
             ) : null}
 
             {hasCompleteRange && preview ? (
@@ -203,7 +259,14 @@ export function LeaveRequestForm({
 
         <Button
           className="h-12 w-full text-base"
-          disabled={!range?.from || !range?.to || submitting || loadingPreview}
+          disabled={
+            !hasCompleteRange ||
+            submitting ||
+            loadingPreview ||
+            // Verificarea perioadei încă nu a răspuns (debounce sau cerere în curs).
+            (!preview && !previewError) ||
+            previewError?.blocksSubmit === true
+          }
           onClick={() => void onSubmit()}
         >
           {submitting ? (
@@ -218,7 +281,7 @@ export function LeaveRequestForm({
 
         <Link href="/dashboard">
           <Button variant="outline" className="w-full">
-            Înapoi la dashboard
+            Înapoi la panou
           </Button>
         </Link>
       </div>

@@ -1,14 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { requireAdminSession } from '@/lib/api-auth';
 import { prisma } from '@/lib/db';
+import { todayInBucharest, utcDate } from '@/lib/dates';
 import ExcelJS from 'exceljs';
 
-export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Neautorizat' }, { status: 401 });
+export async function GET() {
+  const auth = await requireAdminSession();
+  if ('error' in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
+
+  // Anul curent în România; startDate este `@db.Date` (miezul nopții UTC), deci
+  // limitele anului se construiesc tot în UTC (lib/dates.ts).
+  const year = todayInBucharest().getUTCFullYear();
 
   const users = await prisma.user.findMany({
     where: { active: true, deletedAt: null, role: 'EMPLOYEE' },
@@ -18,12 +22,13 @@ export async function GET(req: NextRequest) {
         where: {
           status: { in: ['APPROVED_AUTO', 'APPROVED_ADMIN'] },
           startDate: {
-            gte: new Date(new Date().getFullYear(), 0, 1),
+            gte: utcDate(year, 0, 1),
+            lt: utcDate(year + 1, 0, 1),
           },
         },
       },
       accruals: {
-        where: { year: new Date().getFullYear() },
+        where: { year },
       },
     },
     orderBy: { lastName: 'asc' },
@@ -69,7 +74,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(buffer, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="situatie-zile-${new Date().getFullYear()}.xlsx"`,
+      'Content-Disposition': `attachment; filename="situatie-zile-${year}.xlsx"`,
     },
   });
 }

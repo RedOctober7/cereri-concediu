@@ -11,11 +11,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loginSchema, type LoginInput } from "@/lib/validators";
+import { safeCallbackPath } from "./safe-callback";
+import {
+  DEMO_ADMIN_USERNAME,
+  DEMO_EMPLOYEE_USERNAME,
+  DEMO_PASSWORD,
+} from "@/lib/demo/accounts";
+
+// Pe instanța publică de demo (NEXT_PUBLIC_DEMO_MODE=true) vizitatorii intră cu un click.
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl");
   const [isLoading, setIsLoading] = useState(false);
 
   const {
@@ -28,12 +36,16 @@ export function LoginForm() {
   });
 
   async function onSubmit(data: LoginInput) {
+    await login(data.username, data.password);
+  }
+
+  async function login(username: string, password: string) {
     setIsLoading(true);
 
     try {
       const result = await signIn("credentials", {
-        username: data.username.trim().toLowerCase(),
-        password: data.password,
+        username: username.trim().toLowerCase(),
+        password,
         redirect: false,
       });
 
@@ -57,8 +69,14 @@ export function LoginForm() {
         return;
       }
 
-      if (callbackUrl) {
-        router.push(callbackUrl);
+      // Doar căi de pe același site: altfel ?callbackUrl=https://evil.com ar trimite
+      // utilizatorul, imediat după autentificare, pe alt site (open redirect).
+      const callbackPath = safeCallbackPath(
+        searchParams.get("callbackUrl"),
+        window.location.origin
+      );
+      if (callbackPath) {
+        router.push(callbackPath);
       } else if (session.user?.role === "ADMIN") {
         router.push("/admin");
       } else {
@@ -75,47 +93,78 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="username">Utilizator</Label>
-        <Input
-          id="username"
-          autoComplete="username"
-          autoCapitalize="none"
-          disabled={isLoading}
-          aria-invalid={!!errors.username}
-          {...register("username")}
-        />
-        {errors.username && (
-          <p className="text-sm text-destructive">{errors.username.message}</p>
-        )}
-      </div>
+    <div className="space-y-6">
+      {DEMO_MODE ? (
+        <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Versiune demo</p>
+            <p className="text-sm text-muted-foreground">
+              Datele sunt fictive. Intră direct ca administrator sau ca angajat.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button
+              type="button"
+              className="h-10"
+              disabled={isLoading}
+              onClick={() => void login(DEMO_ADMIN_USERNAME, DEMO_PASSWORD)}
+            >
+              Intră ca administrator
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10"
+              disabled={isLoading}
+              onClick={() => void login(DEMO_EMPLOYEE_USERNAME, DEMO_PASSWORD)}
+            >
+              Intră ca angajat
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="username">Utilizator</Label>
+          <Input
+            id="username"
+            autoComplete="username"
+            autoCapitalize="none"
+            disabled={isLoading}
+            aria-invalid={!!errors.username}
+            {...register("username")}
+          />
+          {errors.username && (
+            <p className="text-sm text-destructive">{errors.username.message}</p>
+          )}
+        </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="password">Parolă</Label>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          disabled={isLoading}
-          aria-invalid={!!errors.password}
-          {...register("password")}
-        />
-        {errors.password && (
-          <p className="text-sm text-destructive">{errors.password.message}</p>
-        )}
-      </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">Parolă</Label>
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            disabled={isLoading}
+            aria-invalid={!!errors.password}
+            {...register("password")}
+          />
+          {errors.password && (
+            <p className="text-sm text-destructive">{errors.password.message}</p>
+          )}
+        </div>
 
-      <Button type="submit" className="w-full h-11" disabled={isLoading}>
-        {isLoading ? (
-          <>
-            <Loader2 className="animate-spin" />
-            Se autentifică...
-          </>
-        ) : (
-          "Autentificare"
-        )}
-      </Button>
-    </form>
+        <Button type="submit" className="w-full h-11" disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 className="animate-spin" />
+              Se autentifică...
+            </>
+          ) : (
+            "Autentificare"
+          )}
+        </Button>
+      </form>
+    </div>
   );
 }

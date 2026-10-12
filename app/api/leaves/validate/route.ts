@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { startOfDay } from "date-fns";
 import { requireSession } from "@/lib/api-session";
 import { leaveValidateQuerySchema } from "@/lib/validators";
 import { validateLeaveRequest } from "@/lib/constraints/validate";
@@ -25,9 +24,16 @@ export async function GET(request: Request) {
 
     const validation = await validateLeaveRequest(
       auth.session.user.id,
-      startOfDay(parsed.data.startDate),
-      startOfDay(parsed.data.endDate)
+      parsed.data.startDate,
+      parsed.data.endDate
     );
+
+    if (validation.blockingError) {
+      return NextResponse.json(
+        { error: validation.blockingError },
+        { status: 400 }
+      );
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: auth.session.user.id },

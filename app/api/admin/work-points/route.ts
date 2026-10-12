@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
 import { workPointCreateSchema } from "@/lib/validators";
 import { createAuditLog } from "@/lib/audit/log";
+import { DUPLICATE_NAME_ERROR, workPointNameTaken } from "./names";
 
 export async function GET() {
   try {
@@ -44,8 +45,16 @@ export async function POST(request: Request) {
     const parsed = workPointCreateSchema.safeParse(body);
 
     if (!parsed.success) {
-      const message = parsed.error.issues[0]?.message ?? "Date invalide.";
-      return NextResponse.json({ error: message }, { status: 400 });
+      const issue = parsed.error.issues[0];
+      const field = typeof issue?.path[0] === "string" ? issue.path[0] : undefined;
+      return NextResponse.json(
+        { error: issue?.message ?? "Date invalide.", ...(field ? { field } : {}) },
+        { status: 400 }
+      );
+    }
+
+    if (await workPointNameTaken(parsed.data.name)) {
+      return NextResponse.json(DUPLICATE_NAME_ERROR, { status: 409 });
     }
 
     const workPoint = await prisma.workPoint.create({
@@ -62,6 +71,7 @@ export async function POST(request: Request) {
       entityId: workPoint.id,
       details: {
         name: workPoint.name,
+        address: workPoint.address,
       },
     });
 

@@ -51,7 +51,7 @@ import {
               Accesați panoul de administrare pentru a aproba sau respinge cererea:
             </Text>
             <Text>
-              <a href={approvalUrl} style={{ color: '#2563eb' }}>{approvalUrl}</a>
+              <a href={approvalUrl} style={{ color: '#2f7a46' }}>{approvalUrl}</a>
             </Text>
             <Text style={{ color: '#666', fontSize: '12px' }}>
               Acest email a fost generat automat. Vă rugăm să nu răspundeți la acest mesaj.

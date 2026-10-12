@@ -1,13 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { LeaveStatus } from "@prisma/client";
-import { addYears, startOfDay } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/api-session";
 import { leaveCreateSchema } from "@/lib/validators";
-import { validateLeaveRequest } from "@/lib/constraints/validate";
-import { calculateWorkingDays } from "@/lib/holidays";
+import {
+  OVERLAPPING_LEAVE_MESSAGE,
+  hasOverlappingOwnLeave,
+  validateLeaveRequest,
+} from "@/lib/constraints/validate";
 import { createAuditLog } from "@/lib/audit/log";
+import {
+  notifyAdminsLeavePending,
+  notifyLeaveApproved,
+} from "@/lib/emails/leave-notifications";
 
 export async function GET() {
   try {
@@ -49,47 +54,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    const start = startOfDay(parsed.data.startDate);
-    const end = startOfDay(parsed.data.endDate);
-    const today = startOfDay(toZonedTime(new Date(), "Europe/Bucharest"));
-    const maxDate = addYears(today, 1);
+    const start = parsed.data.startDate;
+    const end = parsed.data.endDate;
 
-    if (start > end) {
-      return NextResponse.json(
-        { error: "Data de început trebuie să fie înainte de data de sfârșit." },
-        { status: 400 }
-      );
-    }
-
-    if (start < today) {
-      return NextResponse.json(
-        { error: "Perioada selectată trebuie să fie în viitor." },
-        { status: 400 }
-      );
-    }
-
-    if (end > maxDate) {
-      return NextResponse.json(
-        { error: "Perioada nu poate depăși un an de la data curentă." },
-        { status: 400 }
-      );
-    }
-
-    const workingDays = calculateWorkingDays(start, end);
-    if (workingDays < 1) {
-      return NextResponse.json(
-        { error: "Selectează cel puțin o zi lucrătoare." },
-        { status: 400 }
-      );
-    }
-
+    // Aceleași reguli ca la previzualizare (GET /api/leaves/validate).
     const validation = await validateLeaveRequest(
       auth.session.user.id,
       start,
       end
     );
 
+    if (validation.blockingError) {
+      return NextResponse.json(
+        { error: validation.blockingError },
+        { status: 400 }
+      );
+    }
+
     const leave = await prisma.$transaction(async (tx) => {
+      // Blochează rândul utilizatorului până la commit: două cereri simultane ale
+      // aceluiași angajat se serializează, deci verificarea de mai jos o vede pe prima.
+      await tx.$queryRaw`
+        SELECT id FROM "User" WHERE id = ${auth.session.user.id} FOR UPDATE
+      `;
+      if (await hasOverlappingOwnLeave(auth.session.user.id, start, end, tx)) {
+        throw new Error("OVERLAPPING_LEAVE");
+      }
+
       if (!validation.needsAdminApproval) {
         const user = await tx.user.findUnique({
           where: { id: auth.session.user.id },
@@ -150,6 +141,14 @@ export async function POST(request: Request) {
       },
     });
 
+    // După răspuns: PDF-ul, stocarea și emailurile nu întârzie și nu pot face să
+    // eșueze cererea, care e deja salvată (funcțiile notify* nu aruncă).
+    after(() =>
+      leave.status === LeaveStatus.APPROVED_AUTO
+        ? notifyLeaveApproved(leave.id)
+        : notifyAdminsLeavePending(leave.id)
+    );
+
     return NextResponse.json(
       {
         data: leave,
@@ -165,6 +164,12 @@ export async function POST(request: Request) {
       if (error.message === "INSUFFICIENT_DAYS") {
         return NextResponse.json(
           { error: "Nu ai suficiente zile disponibile." },
+          { status: 400 }
+        );
+      }
+      if (error.message === "OVERLAPPING_LEAVE") {
+        return NextResponse.json(
+          { error: OVERLAPPING_LEAVE_MESSAGE },
           { status: 400 }
         );
       }

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { LeaveStatus } from "@prisma/client";
-import { format } from "date-fns";
 import { prisma } from "@/lib/db";
+import {
+  addDaysUTC,
+  toDateOnlyString,
+  todayInBucharest,
+  utcDate,
+} from "@/lib/dates";
 import { requireSession } from "@/lib/api-session";
 import {
   eachDayInRange,
@@ -18,7 +23,14 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const year = Number(searchParams.get("year") ?? new Date().getFullYear());
+    const year = Number(
+      searchParams.get("year") ?? todayInBucharest().getUTCFullYear()
+    );
+
+    // Calculul Paștelui (lib/holidays.ts) este valabil pentru 1900–2099.
+    if (!Number.isInteger(year) || year < 1900 || year > 2099) {
+      return NextResponse.json({ error: "Anul este invalid." }, { status: 400 });
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: auth.session.user.id },
@@ -26,14 +38,14 @@ export async function GET(request: Request) {
     });
 
     const holidays = getRomanianHolidays(year).map((date) => ({
-      date: format(date, "yyyy-MM-dd"),
+      date: toDateOnlyString(date),
       name: getHolidayName(date) ?? "Sărbătoare legală",
     }));
 
     const ownLeaves = await prisma.leaveRequest.findMany({
       where: {
         userId: auth.session.user.id,
-        status: { not: LeaveStatus.REJECTED },
+        status: { notIn: [LeaveStatus.REJECTED, LeaveStatus.CANCELLED] },
       },
       select: {
         id: true,
@@ -46,7 +58,7 @@ export async function GET(request: Request) {
     const ownLeaveDays: string[] = [];
     for (const leave of ownLeaves) {
       for (const day of eachDayInRange(leave.startDate, leave.endDate)) {
-        ownLeaveDays.push(format(day, "yyyy-MM-dd"));
+        ownLeaveDays.push(toDateOnlyString(day));
       }
     }
 
@@ -71,7 +83,7 @@ export async function GET(request: Request) {
 
     for (const leave of colleagueLeaves) {
       for (const day of eachDayInRange(leave.startDate, leave.endDate)) {
-        const key = format(day, "yyyy-MM-dd");
+        const key = toDateOnlyString(day);
         const name = `${leave.user.lastName} ${leave.user.firstName}`;
         const existing = colleagueDaysMap.get(key) ?? [];
         if (!existing.includes(name)) {
@@ -86,13 +98,14 @@ export async function GET(request: Request) {
     );
 
     const weekendDays: string[] = [];
-    for (let month = 0; month < 12; month++) {
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        if (isWeekend(date)) {
-          weekendDays.push(format(date, "yyyy-MM-dd"));
-        }
+    const nextYearStart = utcDate(year + 1, 0, 1);
+    for (
+      let date = utcDate(year, 0, 1);
+      date < nextYearStart;
+      date = addDaysUTC(date, 1)
+    ) {
+      if (isWeekend(date)) {
+        weekendDays.push(toDateOnlyString(date));
       }
     }
 

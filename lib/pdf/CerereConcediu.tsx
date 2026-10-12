@@ -1,56 +1,148 @@
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
-import { format } from 'date-fns';
-import { ro } from 'date-fns/locale';
+import {
+  approvalStatement,
+  formalName,
+  formatCalendarDay,
+  formatDateInBucharest,
+  formatDateTimeInBucharest,
+  workingDaysPhrase,
+  type LeaveApproval,
+} from './content';
+import { PDF_FONT_FAMILY } from './fonts';
+
+const COLORS = {
+  text: '#1c2420',
+  muted: '#5b665f',
+  border: '#d5ddd7',
+  subtle: '#f3f7f4',
+  accent: '#2f7a46',
+};
+
+const FONT_SIZE = 11;
 
 const styles = StyleSheet.create({
   page: {
-    padding: 60,
-    fontFamily: 'Times-Roman',
-    fontSize: 13,
+    paddingTop: 56,
+    paddingBottom: 80,
+    paddingHorizontal: 60,
+    fontFamily: PDF_FONT_FAMILY,
+    fontSize: FONT_SIZE,
+    color: COLORS.text,
+  },
+  // Pe Page, lineHeight ascunde subsolul poziționat absolut, deci stă pe conținut.
+  // Fără unitate, react-pdf îl înmulțește cu fontSize din același stil (implicit 18),
+  // nu cu cel moștenit: de aceea fontSize se repetă aici.
+  content: {
+    fontSize: FONT_SIZE,
+    lineHeight: 1.5,
+  },
+  header: {
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  employer: {
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  muted: {
+    color: COLORS.muted,
   },
   title: {
-    fontSize: 22,
+    marginTop: 40,
+    marginBottom: 28,
+    fontSize: 16,
+    fontWeight: 700,
     textAlign: 'center',
-    marginBottom: 80,
-    fontFamily: 'Times-Roman',
+    letterSpacing: 0.6,
   },
-  body: {
-    lineHeight: 1.8,
+  addressee: {
+    marginBottom: 10,
+  },
+  paragraph: {
+    marginBottom: 20,
     textAlign: 'justify',
   },
   bold: {
-    fontFamily: 'Times-Bold',
+    fontWeight: 700,
+  },
+  table: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  row: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  rowLast: {
+    flexDirection: 'row',
+  },
+  label: {
+    width: '36%',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    backgroundColor: COLORS.subtle,
+    color: COLORS.muted,
+  },
+  value: {
+    width: '64%',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  approval: {
+    marginTop: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.accent,
+    backgroundColor: COLORS.subtle,
+  },
+  approvalHeading: {
+    marginBottom: 2,
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: 0.8,
+    color: COLORS.muted,
+  },
+  approvalTitle: {
+    fontWeight: 700,
+    color: COLORS.accent,
+  },
+  signatures: {
+    marginTop: 44,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  signatureBlock: {
+    width: 200,
+  },
+  signatureLine: {
+    marginTop: 40,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.text,
   },
   footer: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 32,
     left: 60,
     right: 60,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    fontSize: 12,
-  },
-  pageNumber: {
-    position: 'absolute',
-    bottom: 30,
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    fontSize: 10,
+    fontSize: 8,
+    color: COLORS.muted,
   },
 });
 
-function formatDate(date: Date): string {
-  return format(new Date(date), 'dd.MM.yyyy', { locale: ro });
-}
-
-interface CerereConcediuProps {
+export interface CerereConcediuProps {
   request: {
     id: string;
     startDate: Date;
     endDate: Date;
     workingDays: number;
-    approvedAt?: Date | null;
     createdAt: Date;
   };
   user: {
@@ -60,45 +152,105 @@ interface CerereConcediuProps {
     employer: string;
     workPoint?: { name: string } | null;
   };
+  approval: LeaveApproval;
+  appName: string;
+  generatedAt: Date;
 }
 
-export function CerereConcediuPDF({ request, user }: CerereConcediuProps) {
-  const signatureDate = request.approvedAt || request.createdAt;
+function DetailRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
+  return (
+    <View style={last ? styles.rowLast : styles.row}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value}>{value}</Text>
+    </View>
+  );
+}
+
+/**
+ * Cererea de concediu de odihnă: datele angajatului, perioada, data cererii și
+ * aprobarea (automată sau de către un administrator). Nu pretinde o semnătură
+ * electronică: rândul de semnătură rămâne pentru semnătura olografă.
+ */
+export function CerereConcediuPDF({
+  request,
+  user,
+  approval,
+  appName,
+  generatedAt,
+}: CerereConcediuProps) {
+  const name = formalName(user);
+  const period = `${formatCalendarDay(request.startDate)} – ${formatCalendarDay(request.endDate)}`;
+  const requestDate = formatDateInBucharest(request.createdAt);
+  const statement = approvalStatement(approval);
 
   return (
-    <Document>
+    <Document
+      title={`Cerere de concediu de odihnă – ${name}`}
+      author={user.employer}
+      subject={`Concediu de odihnă ${period}`}
+      creator={appName}
+      producer={appName}
+      language="ro"
+    >
       <Page size="A4" style={styles.page}>
-        <Text style={styles.title}>Cerere concediu</Text>
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.employer}>{user.employer}</Text>
+            {user.workPoint ? (
+              <Text style={styles.muted}>Punct de lucru: {user.workPoint.name}</Text>
+            ) : null}
+          </View>
 
-        <View style={styles.body}>
-          <Text>
+          <Text style={styles.title}>CERERE DE CONCEDIU DE ODIHNĂ</Text>
+
+          <Text style={styles.addressee}>Către conducerea {user.employer},</Text>
+
+          <Text style={styles.paragraph}>
             {'Subsemnatul(a) '}
-            <Text style={styles.bold}>
-              {user.lastName} {user.firstName}
-            </Text>
-            {', având funcția de '}
-            <Text style={styles.bold}>{user.jobTitle}</Text>
-            {', angajat al '}
-            <Text style={styles.bold}>{user.employer}</Text>
-            {user.workPoint ? `, la punctul de lucru ${user.workPoint.name},` : ','}
-            {' prin prezenta solicit efectuarea concediului legal de odihnă începând cu data de '}
-            <Text style={styles.bold}>{formatDate(request.startDate)}</Text>
-            {' și până la data de '}
-            <Text style={styles.bold}>{formatDate(request.endDate)}</Text>
-            {', reprezentând '}
-            <Text style={styles.bold}>{request.workingDays}</Text>
-            {' zile de concediu.'}
+            <Text style={styles.bold}>{name}</Text>
+            {`, angajat(ă) la ${user.employer} în funcția de ${user.jobTitle}`}
+            {user.workPoint ? `, la punctul de lucru ${user.workPoint.name}` : ''}
+            {', vă rog să-mi aprobați efectuarea concediului de odihnă în perioada '}
+            <Text style={styles.bold}>{period}</Text>
+            {', în total '}
+            <Text style={styles.bold}>{workingDaysPhrase(request.workingDays)}</Text>
+            {'.'}
           </Text>
+
+          <View style={styles.table}>
+            <DetailRow label="Angajat" value={name} />
+            <DetailRow label="Funcția" value={user.jobTitle} />
+            <DetailRow label="Punct de lucru" value={user.workPoint?.name ?? '—'} />
+            <DetailRow label="Perioada" value={period} />
+            <DetailRow label="Zile lucrătoare" value={String(request.workingDays)} />
+            <DetailRow label="Data cererii" value={requestDate} last />
+          </View>
+
+          <View style={styles.approval} wrap={false}>
+            <Text style={styles.approvalHeading}>APROBARE</Text>
+            <Text style={styles.approvalTitle}>{statement.title}</Text>
+            <Text>{statement.detail}</Text>
+          </View>
+
+          <View style={styles.signatures} wrap={false}>
+            <View>
+              <Text style={styles.muted}>Data</Text>
+              <Text>{requestDate}</Text>
+            </View>
+            <View style={styles.signatureBlock}>
+              <Text style={styles.muted}>Semnătura angajatului</Text>
+              <View style={styles.signatureLine} />
+            </View>
+          </View>
         </View>
 
-        <View style={styles.footer}>
-          <Text>Data: {formatDate(signatureDate)}</Text>
+        <View style={styles.footer} fixed>
           <Text>
-            Semnătura: Semnat electronic ({request.id.slice(0, 8)})
+            Generat de {appName} pe {formatDateTimeInBucharest(generatedAt)} · Cod cerere:{' '}
+            {request.id}
           </Text>
+          <Text render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
         </View>
-
-        <Text style={styles.pageNumber}>1</Text>
       </Page>
     </Document>
   );

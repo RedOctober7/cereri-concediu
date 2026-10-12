@@ -3,7 +3,22 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { loginSchema } from "@/lib/validators";
-import { rateLimitAuth } from "@/lib/rate-limit";
+import { startAuthAttempt } from "@/lib/rate-limit";
+
+// Cât timp avem încredere în rolul și starea contului din JWT fără să le recitim
+// din baza de date. getServerSession (layout-uri, pagini, gărzi API) trece prin
+// callback-ul jwt; proxy.ts doar decodează JWT-ul (vezi comentariul de acolo).
+const SESSION_REVALIDATE_MS = 5 * 60 * 1000;
+
+function isRevalidationDue(checkedAt: number | undefined, now: number): boolean {
+  // Token emis înainte de revalidarea periodică: îl verificăm imediat.
+  if (typeof checkedAt !== "number") {
+    return true;
+  }
+  const age = now - checkedAt;
+  // Un checkedAt din viitor (ceas decalat între instanțe) nu prelungește încrederea.
+  return age < 0 || age >= SESSION_REVALIDATE_MS;
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -19,8 +34,12 @@ export const authOptions: NextAuthOptions = {
           req.headers?.["x-real-ip"]?.toString() ??
           "unknown";
 
-        const allowed = await rateLimitAuth(ip);
-        if (!allowed) {
+        // Se numără doar încercările eșuate: pe utilizator + IP și, mai larg, pe IP.
+        const attempt = await startAuthAttempt(
+          typeof credentials?.username === "string" ? credentials.username : "",
+          ip
+        );
+        if (!attempt.allowed) {
           throw new Error(
             "Prea multe încercări de autentificare. Reîncearcă în 15 minute."
           );
@@ -39,6 +58,7 @@ export const authOptions: NextAuthOptions = {
             active: true,
             deletedAt: null,
           },
+          omit: { passwordHash: false },
         });
 
         if (!user) {
@@ -50,6 +70,7 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        await attempt.succeeded();
         return {
           id: user.id,
           email: user.email,
@@ -69,22 +90,67 @@ export const authOptions: NextAuthOptions = {
     error: "/login",
   },
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
         token.mustChangePassword = user.mustChangePassword;
-        token.sessionVersion = Date.now();
+        token.checkedAt = Date.now();
+        return token;
       }
 
-      if (trigger === "update" && session) {
-        if (session.mustChangePassword !== undefined) {
-          token.mustChangePassword = session.mustChangePassword;
-        }
-        if (session.role !== undefined) {
-          token.role = session.role;
-        }
+      // Payload-ul lui update() vine din browser, deci nu îl folosim niciodată:
+      // recitim rolul și starea contului din DB la orice update() și, periodic, la
+      // citirea sesiunii. Altfel dezactivarea, resetarea forțată a parolei sau
+      // schimbarea rolului nu ar atinge sesiunile deschise (next-auth reemite
+      // cookie-ul la fiecare /api/auth/session, deci un JWT ar trăi la nesfârșit).
+      // getServerSession din RSC/rute nu poate rescrie cookie-ul, deci după 5 minute
+      // recitirea se repetă la fiecare cerere server până când browserul îl
+      // reîmprospătează; de aceea e un singur findUnique cu select minim.
+      const now = Date.now();
+      if (trigger !== "update" && !isRevalidationDue(token.checkedAt, now)) {
+        return token;
       }
+
+      let dbUser;
+      try {
+        dbUser = token.id
+          ? await prisma.user.findUnique({
+              where: { id: token.id },
+              select: {
+                role: true,
+                mustChangePassword: true,
+                active: true,
+                deletedAt: true,
+              },
+            })
+          : null;
+      } catch (error) {
+        // O problemă temporară cu baza de date nu trebuie să delogheze pe toată
+        // lumea: păstrăm token-ul așa cum e (checkedAt neschimbat), deci
+        // revalidarea se reîncearcă la următoarea citire a sesiunii.
+        console.error("[Auth] Revalidarea sesiunii a eșuat:", error);
+        return token;
+      }
+
+      if (!dbUser || !dbUser.active || dbUser.deletedAt) {
+        // O eroare aruncată aici face ca next-auth să nu mai întoarcă sesiunea
+        // (getServerSession dă null) și să șteargă cookie-ul la /api/auth/session
+        // (JWT_SESSION_ERROR), deci utilizatorul ajunge delogat.
+        throw new Error("Contul nu mai este activ.");
+      }
+
+      token.role = dbUser.role;
+      // La update() (POST /api/auth/session, cookie-ul se rescrie imediat) copiem
+      // valoarea din DB. La revalidarea periodică doar ridicăm obligația: din RSC
+      // cookie-ul rămâne cu true, proxy-ul ar trimite în continuare la
+      // /schimba-parola, iar pagina ar redirecționa înapoi (buclă de redirect).
+      // O obligație scoasă din DB dispare deci la schimbarea parolei sau la relogare.
+      token.mustChangePassword =
+        trigger === "update"
+          ? dbUser.mustChangePassword
+          : token.mustChangePassword || dbUser.mustChangePassword;
+      token.checkedAt = now;
 
       return token;
     },

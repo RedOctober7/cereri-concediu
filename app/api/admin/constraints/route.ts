@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
 import { constraintCreateSchema } from "@/lib/validators";
 import { createAuditLog } from "@/lib/audit/log";
+import { SERVER_ERROR, checkWorkPoint, validationError } from "./shared";
 
 export async function GET() {
   try {
@@ -23,13 +24,7 @@ export async function GET() {
     return NextResponse.json({ data: constraints });
   } catch (error) {
     console.error("[Constraints] Eroare listare:", error);
-    return NextResponse.json(
-      {
-        error:
-          "A apărut o eroare. Reîncearcă în câteva momente sau contactează un administrator.",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json(SERVER_ERROR, { status: 500 });
   }
 }
 
@@ -44,17 +39,24 @@ export async function POST(request: Request) {
     const parsed = constraintCreateSchema.safeParse(body);
 
     if (!parsed.success) {
-      const message = parsed.error.issues[0]?.message ?? "Date invalide.";
-      return NextResponse.json({ error: message }, { status: 400 });
+      return validationError(parsed.error.issues[0]);
+    }
+
+    let workPointName: string | null = null;
+    if (parsed.data.workPointId) {
+      const check = await checkWorkPoint(parsed.data.workPointId);
+      if ("response" in check) {
+        return check.response;
+      }
+      workPointName = check.name;
     }
 
     const constraint = await prisma.constraint.create({
       data: {
         scope: parsed.data.scope,
         type: parsed.data.type,
-        workPointId: parsed.data.workPointId || null,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        config: parsed.data.config as any,
+        workPointId: parsed.data.workPointId,
+        config: parsed.data.config,
         active: parsed.data.active ?? true,
       },
     });
@@ -64,18 +66,19 @@ export async function POST(request: Request) {
       action: "CREATE_CONSTRAINT",
       entityType: "Constraint",
       entityId: constraint.id,
-      details: parsed.data as Record<string, unknown>,
+      details: {
+        type: constraint.type,
+        scope: constraint.scope,
+        workPointId: constraint.workPointId,
+        workPointName,
+        config: parsed.data.config,
+        active: constraint.active,
+      },
     });
 
     return NextResponse.json({ data: constraint }, { status: 201 });
   } catch (error) {
     console.error("[Constraints] Eroare creare:", error);
-    return NextResponse.json(
-      {
-        error:
-          "A apărut o eroare. Reîncearcă în câteva momente sau contactează un administrator.",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json(SERVER_ERROR, { status: 500 });
   }
 }

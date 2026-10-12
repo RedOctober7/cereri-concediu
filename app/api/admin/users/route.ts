@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { Role } from "@prisma/client";
+import { Prisma, Role } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
 import { userCreateSchema } from "@/lib/validators";
 import { createAuditLog } from "@/lib/audit/log";
+import { findDuplicateAccount } from "./duplicates";
 import { WelcomeEmail } from "@/lib/emails/WelcomeEmail";
 import { Resend } from "resend";
 import { render } from "@react-email/render";
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
               OR: [
                 { firstName: { contains: search, mode: "insensitive" } },
                 { lastName: { contains: search, mode: "insensitive" } },
+                { username: { contains: search, mode: "insensitive" } },
                 { email: { contains: search, mode: "insensitive" } },
               ],
             }
@@ -69,25 +71,36 @@ export async function POST(request: Request) {
     const parsed = userCreateSchema.safeParse(body);
 
     if (!parsed.success) {
-      const message = parsed.error.issues[0]?.message ?? "Date invalide.";
-      return NextResponse.json({ error: message }, { status: 400 });
+      const issue = parsed.error.issues[0];
+      const field = typeof issue?.path[0] === "string" ? issue.path[0] : undefined;
+      return NextResponse.json(
+        { error: issue?.message ?? "Date invalide.", ...(field ? { field } : {}) },
+        { status: 400 }
+      );
     }
 
-    const duplicate = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { username: parsed.data.username.toLowerCase() },
-          { email: parsed.data.email.toLowerCase() },
-        ],
-      },
-      select: { id: true, email: true, username: true },
-    });
-
+    const username = parsed.data.username.toLowerCase();
+    const email = parsed.data.email.toLowerCase();
+    const duplicate = await findDuplicateAccount({ username, email });
     if (duplicate) {
-      return NextResponse.json(
-        { error: "Există deja un utilizator cu acest email sau username." },
-        { status: 409 }
-      );
+      return NextResponse.json(duplicate, { status: 409 });
+    }
+
+    const workPointId = parsed.data.workPointId || null;
+    if (workPointId) {
+      const workPoint = await prisma.workPoint.findUnique({
+        where: { id: workPointId },
+        select: { active: true },
+      });
+      if (!workPoint?.active) {
+        return NextResponse.json(
+          {
+            error: "Punctul de lucru selectat nu există sau este inactiv.",
+            field: "workPointId",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const passwordHash = await bcrypt.hash(parsed.data.password, 12);
@@ -95,13 +108,13 @@ export async function POST(request: Request) {
       data: {
         firstName: parsed.data.firstName,
         lastName: parsed.data.lastName,
-        email: parsed.data.email.toLowerCase(),
-        username: parsed.data.username.toLowerCase(),
+        email,
+        username,
         passwordHash,
         role: Role.EMPLOYEE,
         jobTitle: parsed.data.jobTitle,
         employer: parsed.data.employer,
-        workPointId: parsed.data.workPointId || null,
+        workPointId,
         hireDate: parsed.data.hireDate,
         initialLeaveDays: parsed.data.initialLeaveDays,
         availableDays: parsed.data.initialLeaveDays,
@@ -122,9 +135,13 @@ export async function POST(request: Request) {
         email: user.email,
         username: user.username,
         workPointId: user.workPointId,
+        initialLeaveDays: user.initialLeaveDays,
       },
     });
 
+    // Contul există deja; un email eșuat nu anulează crearea, dar adminul trebuie să
+    // afle că angajatul nu a primit parola. Resend întoarce eroarea în loc să arunce.
+    let warning: string | undefined;
     try {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const html = await render(WelcomeEmail({
@@ -132,18 +149,32 @@ export async function POST(request: Request) {
         username: user.username,
         password: parsed.data.password,
       }));
-      await resend.emails.send({
+      const { error: sendError } = await resend.emails.send({
         from: process.env.EMAIL_FROM || 'noreply@example.ro',
         to: user.email,
         subject: 'Cont nou creat - Cereri Concediu',
         html,
       });
+      if (sendError) {
+        throw new Error(sendError.message);
+      }
     } catch (emailError) {
       console.error('[Users] Eroare email:', emailError);
+      warning =
+        "Contul a fost creat, dar emailul de bun venit nu a putut fi trimis. Comunică-i angajatului numele de utilizator și parola.";
     }
 
-    return NextResponse.json({ data: user }, { status: 201 });
+    return NextResponse.json(warning ? { data: user, warning } : { data: user }, {
+      status: 201,
+    });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      // Cont creat în paralel cu același username sau email.
+      return NextResponse.json(
+        { error: "Există deja un utilizator cu acest email sau nume de utilizator." },
+        { status: 409 }
+      );
+    }
     console.error("[Users] Eroare creare:", error);
     return NextResponse.json(
       {

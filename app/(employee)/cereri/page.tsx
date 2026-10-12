@@ -35,7 +35,7 @@ export default async function MyLeavesPage() {
             Istoricul cererilor de concediu depuse de tine.
           </p>
         </div>
-        <Button className="gap-2" render={<Link href="/cereri/noua" />}>
+        <Button className="gap-2" nativeButton={false} render={<Link href="/cereri/noua" />}>
           <CalendarPlus className="size-4" />
           Cerere nouă
         </Button>

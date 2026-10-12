@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { ro } from "date-fns/locale";
 import type { LeaveRequest, LeaveStatus } from "@prisma/client";
+import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,26 @@ import {
   leaveStatusLabel,
   isApprovedStatus,
 } from "@/lib/leaves/status";
+import { startOfDayUTC, todayInBucharest } from "@/lib/dates";
+
+/** Numele fișierului din `Content-Disposition: attachment; filename="..."`. */
+function fileNameFrom(disposition: string | null): string | null {
+  const match = disposition && /filename="([^"]+)"/.exec(disposition);
+  return match ? match[1] : null;
+}
+
+/** Descarcă un Blob cu numele dat (fără să părăsească pagina). */
+function saveBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Unele browsere pornesc descărcarea asincron: URL-ul rămâne valid încă puțin.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
 
 export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
   const router = useRouter();
@@ -38,6 +59,32 @@ export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
     null
   );
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  async function onDownload(id: string) {
+    setDownloadingId(id);
+    try {
+      const res = await fetch(`/api/leaves/${id}/pdf`);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Nu s-a putut descărca PDF-ul.");
+      }
+      const blob = await res.blob();
+      saveBlob(
+        blob,
+        fileNameFrom(res.headers.get("Content-Disposition")) ?? "cerere-concediu.pdf"
+      );
+    } catch (error) {
+      // fetch aruncă TypeError la probleme de rețea; mesajul lui e în engleză.
+      toast.error(
+        error instanceof TypeError || !(error instanceof Error)
+          ? "Nu s-a putut descărca PDF-ul. Verifică conexiunea și reîncearcă."
+          : error.message
+      );
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   async function onCancel(id: string) {
     setCancellingId(id);
@@ -62,11 +109,8 @@ export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
     if (leave.status !== "PENDING_ADMIN") {
       return false;
     }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const start = new Date(leave.startDate);
-    start.setHours(0, 0, 0, 0);
-    return start > today;
+    // Aceeași regulă ca serverul: zile la miezul nopții UTC, „azi” în București.
+    return startOfDayUTC(new Date(leave.startDate)) > todayInBucharest();
   }
 
   if (leaves.length === 0) {
@@ -103,8 +147,19 @@ export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
             </div>
             <div className="mt-3 flex flex-wrap gap-2 md:mt-0">
               {isApprovedStatus(leave.status as LeaveStatus) ? (
-                <Button variant="outline" size="sm" disabled title="Disponibil în Faza 4">
-                  Descarcă PDF
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void onDownload(leave.id)}
+                  disabled={downloadingId === leave.id}
+                  aria-busy={downloadingId === leave.id}
+                >
+                  {downloadingId === leave.id ? (
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Download aria-hidden="true" />
+                  )}
+                  {downloadingId === leave.id ? "Se descarcă..." : "Descarcă PDF"}
                 </Button>
               ) : null}
               {leave.status === "REJECTED" && leave.rejectionReason ? (

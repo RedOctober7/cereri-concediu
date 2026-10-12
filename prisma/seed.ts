@@ -1,4 +1,6 @@
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: ".env.local", quiet: true });
+config({ quiet: true });
 import bcrypt from "bcryptjs";
 import { PrismaClient, Role } from "@prisma/client";
 
