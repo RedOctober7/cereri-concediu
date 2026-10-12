@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/RedOctober7/cereri-concediu/actions/workflows/ci.yml/badge.svg)](https://github.com/RedOctober7/cereri-concediu/actions/workflows/ci.yml)
 
-Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai multe puncte de lucru (de exemplu, un lanț de farmacii). Angajații își depun cererile online și văd cine din echipă lipsește. Cererile care respectă regulile firmei se aprobă automat, iar restul ajung la administrator. Zilele se acumulează și expiră după regulile din Codul muncii, iar fiecare cerere aprobată are un PDF gata de semnat.
+Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai multe puncte de lucru (de exemplu, un lanț de farmacii). Angajații își depun cererile online și văd cine din echipă lipsește. Fiecare cerere ajunge la administrator, care o aprobă sau o respinge, iar regulile firmei îi semnalează ce trebuie verificat. Zilele se acumulează și expiră după regulile din Codul muncii, iar fiecare cerere aprobată are un PDF gata de semnat.
 
-> **In English:** a leave-management web app for a Romanian company with several locations. Employees request leave online, a rules engine auto-approves compliant requests and routes the rest to an admin, leave balances accrue monthly and expire per the Romanian Labour Code, and every approved request gets a signable PDF. Built with Next.js 16, TypeScript, Prisma/PostgreSQL and NextAuth, with ~280 unit tests run in two time zones and CI.
+> **In English:** a leave-management web app for a Romanian company with several locations. Employees request leave online, every request goes to an admin for approval with rule warnings attached, leave balances accrue monthly and expire per the Romanian Labour Code, and every approved request gets a signable PDF. Built with Next.js 16, TypeScript, Prisma/PostgreSQL and NextAuth, with ~280 unit tests run in two time zones and CI.
 
 ![Panoul administratorului](docs/screenshots/admin-panou.png)
 
@@ -12,16 +12,16 @@ Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai mult
 
 **Angajatul**
 - Depune o cerere dintr-un calendar care marchează weekendurile, sărbătorile legale și colegii de la același punct de lucru aflați în concediu.
-- Vede înainte de trimitere câte zile lucrătoare are cererea, soldul rămas și dacă cererea se aprobă automat sau merge la administrator, cu motivul.
-- Își urmărește cererile, le poate anula pe cele aflate încă în așteptare și descarcă PDF-ul cererilor aprobate.
+- Vede înainte de trimitere câte zile lucrătoare are cererea, soldul rămas și ce reguli încalcă, dacă încalcă vreuna.
+- Își urmărește cererile, le poate anula pe cele în așteptare și concediile aprobate care nu au început (zilele revin în sold), și descarcă PDF-ul cererilor aprobate.
 - E avertizat pe panou dacă are zile neplanificate care expiră la următorul termen (30 iunie) și până când trebuie să le ia.
 - Își resetează singur parola prin email.
 
 **Administratorul**
 - Panou cu ce cere atenție: cereri în așteptare, cine e în concediu azi, plecări în următoarele 14 zile, angajați cu sold mic și angajații cu zile care urmează să expire.
-- Aprobă sau respinge cereri, cu motiv, filtrate după status, punct de lucru și angajat.
+- Aprobă sau respinge cereri, cu motiv, filtrate după status, punct de lucru și angajat. Vede soldul angajatului înainte și după aprobare și trebuie să confirme explicit o aprobare care l-ar face negativ. Poate anula un concediu aprobat care nu a început.
 - Gestionează angajații: date, sold inițial, ajustări de sold cu motiv, resetare de parolă, dezactivare.
-- Configurează reguli fără cod: preaviz minim, durată maximă, lună restricționată (ex. inventar), procent maxim din echipă absent simultan, concediu neîntrerupt anual de minim 10 zile (art. 148).
+- Configurează reguli fără cod: preaviz minim, lună restricționată (ex. inventar), concediu neîntrerupt anual de minim 10 zile (art. 148).
 - Exportă situația zilelor în Excel și vede jurnalul complet al acțiunilor.
 
 **Automat**
@@ -41,11 +41,12 @@ Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai mult
 
 - **Zilele calendaristice sunt `Date` la miezul nopții UTC** (`lib/dates.ts`), exact ce scrie Prisma într-o coloană `@db.Date`. Browserul trimite `yyyy-MM-dd`, iar „azi” se calculează în ora României. Așa rezultatele sunt aceleași pe serverul Vercel (UTC) și pe un laptop din București; testele rulează în ambele fusuri orare.
 - **Sărbătorile legale din România se calculează, nu se scriu de mână**: Paștele ortodox (algoritmul Gauss), Rusaliile, plus 6–7 ianuarie începând cu 2024 (Legea 37/2024).
-- **Regulile nu resping, ci direcționează**: o cerere care încalcă o regulă ajunge la administrator cu motivul explicit. Doar suprapunerea cu o cerere proprie, o dată în trecut sau lipsa zilelor lucrătoare blochează trimiterea. Previzualizarea și crearea folosesc aceeași funcție de validare.
+- **Nicio cerere nu se aprobă automat, iar regulile nu resping, ci atenționează**: o cerere care încalcă o regulă (sau depășește soldul, socotind și cererile încă în așteptare) ajunge la administrator cu motivul explicit. Doar suprapunerea cu o cerere proprie, o dată în trecut sau lipsa zilelor lucrătoare blochează trimiterea. Previzualizarea și crearea folosesc aceeași funcție de validare.
 - **Avertizarea despre zilele care expiră folosește exact calculul expirării** (`planRollover`), rulat în avans: angajatul vede ce se va întâmpla efectiv pe 1 iulie, nu o estimare. Jurisprudența CJUE (C-619/16, C-684/16) cere ca angajatul să fie informat din timp înainte ca zilele să se piardă.
-- **Operațiile pe sold sunt atomice**: crearea, aprobarea și ajustarea blochează rândul angajatului (`SELECT … FOR UPDATE`), iar tranzițiile de status sunt condiționate de statusul curent, ca un dublu click să nu scadă zilele de două ori. Cron-urile sunt idempotente.
+- **Operațiile pe sold sunt atomice**: crearea, aprobarea, anularea și ajustarea blochează rândul angajatului (`SELECT … FOR UPDATE`), iar tranzițiile de status sunt condiționate de statusul curent, ca un dublu click să nu scadă zilele de două ori. Cron-urile sunt idempotente.
 - **Securitate**:
   - rolul și starea contului se reîncarcă periodic din baza de date, deci un cont dezactivat își pierde accesul în câteva minute;
+  - schimbarea sau resetarea parolei închide toate sesiunile deschise ale contului (`sessionVersion`);
   - rate limiting la login pe utilizator + IP, cu Upstash Redis;
   - tokenurile de resetare se stochează doar ca hash, sunt de unică folosință și expiră într-o oră; răspunsul e același pentru orice utilizator, ca să nu se poată afla ce conturi există;
   - hash-urile parolelor sunt excluse global din interogările Prisma;
