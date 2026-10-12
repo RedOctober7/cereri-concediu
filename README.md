@@ -127,3 +127,7 @@ Fără Vercel (de exemplu pe un PC din firmă, cu `npm run build` și `npm start
 O instanță demo publică are nevoie de un proiect Vercel separat, cu propria bază de date, `DEMO_MODE=true` și `NEXT_PUBLIC_DEMO_MODE=true`.
 
 CI-ul (`.github/workflows/ci.yml`) rulează la fiecare push lint-ul, verificarea de tipuri, testele în ambele fusuri orare și build-ul. Separat, aplică migrările pe un Postgres 16 și verifică dacă schema s-a îndepărtat de migrări.
+
+## Autor
+
+**Astefanei Razvan** · [GitHub](https://github.com/RedOctober7)
