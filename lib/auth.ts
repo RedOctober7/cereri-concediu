@@ -20,6 +20,9 @@ function isRevalidationDue(checkedAt: number | undefined, now: number): boolean 
   return age < 0 || age >= SESSION_REVALIDATE_MS;
 }
 
+/** Hash bcrypt (cost 12, ca parolele reale) al unei parole aleatorii, pentru login fără cont. */
+const DUMMY_PASSWORD_HASH = "$2b$12$Kt/BHWXaYwNN9eGThILS/eQJqww.VchLj/Q8EQOZGlOjPeIbm4p42";
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -61,11 +64,12 @@ export const authOptions: NextAuthOptions = {
           omit: { passwordHash: false },
         });
 
+        // Și fără cont, comparăm cu un hash fix: altfel răspunsul mai rapid (fără
+        // bcrypt) ar arăta ce nume de utilizator există.
+        const valid = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
         if (!user) {
           return null;
         }
-
-        const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) {
           return null;
         }
