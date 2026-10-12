@@ -106,7 +106,8 @@ export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
   }
 
   function canCancel(leave: LeaveRequest) {
-    if (leave.status !== "PENDING_ADMIN") {
+    const status = leave.status as LeaveStatus;
+    if (status !== "PENDING_ADMIN" && !isApprovedStatus(status)) {
       return false;
     }
     // Aceeași regulă ca serverul: zile la miezul nopții UTC, „azi” în București.
@@ -184,8 +185,9 @@ export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Anulezi cererea?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Această acțiune nu poate fi anulată. Cererea va fi marcată
-                        ca anulată.
+                        {isApprovedStatus(leave.status as LeaveStatus)
+                          ? `Concediul aprobat va fi anulat, iar cele ${leave.workingDays} zile lucrătoare se întorc în soldul tău. Acțiunea nu poate fi refăcută.`
+                          : "Cererea va fi marcată ca anulată. Acțiunea nu poate fi refăcută."}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

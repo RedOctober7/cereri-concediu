@@ -73,6 +73,8 @@ export type AdminLeaveRow = {
   workingDays: number;
   /** Soldul curent al angajatului (zilele cererilor în așteptare nu sunt scăzute). */
   employeeAvailableDays: number;
+  /** Concediu aprobat care nu a început: adminul îl poate anula (zilele se întorc în sold). */
+  cancellable: boolean;
   status: LeaveStatus;
   violationReasons: string[];
   rejectionReason: string | null;
@@ -223,6 +225,7 @@ export function LeavesAdmin({
   );
 
   const [detailsRow, setDetailsRow] = useState<AdminLeaveRow | null>(null);
+  const [cancelRow, setCancelRow] = useState<AdminLeaveRow | null>(null);
   const [approveRow, setApproveRow] = useState<AdminLeaveRow | null>(null);
   const approveBalanceAfter = approveRow
     ? Math.round((approveRow.employeeAvailableDays - approveRow.workingDays) * 100) / 100
@@ -309,7 +312,7 @@ export function LeavesAdmin({
 
   async function decide(
     row: AdminLeaveRow,
-    action: "approve" | "reject",
+    action: "approve" | "reject" | "cancel",
     allowNegativeBalance = false
   ) {
     setSubmitting(true);
@@ -318,7 +321,11 @@ export function LeavesAdmin({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          action === "reject" ? { rejectionReason: trimmedReason } : { allowNegativeBalance }
+          action === "reject"
+            ? { rejectionReason: trimmedReason }
+            : action === "approve"
+              ? { allowNegativeBalance }
+              : {}
         ),
       });
       // O sesiune expirată e redirecționată (de proxy) spre /login, care răspunde 200 cu
@@ -339,6 +346,7 @@ export function LeavesAdmin({
         if (res.status < 500) {
           setApproveRow(null);
           setRejectRow(null);
+          setCancelRow(null);
           startRefresh(() => router.refresh());
         }
         return;
@@ -348,11 +356,16 @@ export function LeavesAdmin({
         toast.warning(data.warning);
       } else {
         toast.success(
-          action === "approve" ? "Cererea a fost aprobată." : "Cererea a fost respinsă."
+          action === "approve"
+            ? "Cererea a fost aprobată."
+            : action === "reject"
+              ? "Cererea a fost respinsă."
+              : "Concediul a fost anulat, iar zilele au revenit în sold."
         );
       }
       setApproveRow(null);
       setRejectRow(null);
+      setCancelRow(null);
       startRefresh(() => router.refresh());
     } catch {
       toast.error("Serverul nu a putut fi contactat. Verifică conexiunea și reîncearcă.");
@@ -706,7 +719,7 @@ export function LeavesAdmin({
                   <p className="flex items-center gap-1.5 text-sm font-medium">
                     <TriangleAlert aria-hidden="true" className="size-4 text-muted-foreground" />
                     {detailsRow.status === "PENDING_ADMIN"
-                      ? "De ce are nevoie de aprobarea ta"
+                      ? "Atenționări pentru decizia ta"
                       : "Reguli încălcate la depunere"}
                   </p>
                   <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
@@ -736,11 +749,56 @@ export function LeavesAdmin({
                     </Button>
                   </>
                 ) : null}
+                {detailsRow.cancellable ? (
+                  <Button
+                    variant="destructive"
+                    disabled={busy}
+                    onClick={() => {
+                      setCancelRow(detailsRow);
+                      setDetailsRow(null);
+                    }}
+                  >
+                    <X />
+                    Anulează concediul
+                  </Button>
+                ) : null}
               </DialogFooter>
             </>
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {/* Confirmare anulare concediu aprobat */}
+      <AlertDialog
+        open={cancelRow !== null}
+        onOpenChange={(open) => !open && !submitting && setCancelRow(null)}
+      >
+        <AlertDialogContent>
+          {cancelRow ? (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Anulezi concediul aprobat?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {cancelRow.employeeName} · {cancelRow.period} ·{" "}
+                  {workingDaysLabel(cancelRow.workingDays)}. Zilele se întorc în soldul
+                  angajatului, iar acțiunea apare în jurnal. Anunță angajatul despre anulare.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={submitting}>Renunță</AlertDialogCancel>
+                <Button
+                  variant="destructive"
+                  disabled={submitting}
+                  onClick={() => void decide(cancelRow, "cancel")}
+                >
+                  {submitting ? <Loader2 className="animate-spin" /> : <X />}
+                  {submitting ? "Se anulează..." : "Anulează concediul"}
+                </Button>
+              </AlertDialogFooter>
+            </>
+          ) : null}
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Confirmare aprobare */}
       <AlertDialog

@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import type { LeaveStatus, Prisma } from "@prisma/client";
 import { formatInTimeZone } from "date-fns-tz";
 import { authOptions } from "@/lib/auth";
-import { APP_TIME_ZONE } from "@/lib/dates";
+import { APP_TIME_ZONE, todayInBucharest } from "@/lib/dates";
+import { isApprovedStatus } from "@/lib/leaves/status";
 import { prisma } from "@/lib/db";
 import {
   LeavesAdmin,
@@ -126,6 +127,7 @@ export default async function AdminCereriPage({
     approvers.map((user) => [user.id, `${user.firstName} ${user.lastName}`])
   );
 
+  const today = todayInBucharest();
   const rows: AdminLeaveRow[] = leaves.map((leave) => ({
     id: leave.id,
     employeeName: `${leave.user.firstName} ${leave.user.lastName}`,
@@ -136,6 +138,7 @@ export default async function AdminCereriPage({
     period: formatPeriod(leave.startDate, leave.endDate),
     workingDays: leave.workingDays,
     employeeAvailableDays: leave.user.availableDays,
+    cancellable: isApprovedStatus(leave.status) && leave.startDate > today,
     status: leave.status,
     violationReasons: leave.violationReasons,
     rejectionReason: leave.rejectionReason,
