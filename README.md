@@ -4,7 +4,7 @@
 
 Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai multe puncte de lucru (de exemplu, un lanț de farmacii). Angajații își depun cererile online și văd cine din echipă lipsește. Fiecare cerere ajunge la administrator, care o aprobă sau o respinge, iar regulile firmei îi semnalează ce trebuie verificat. Zilele se acumulează și expiră după regulile din Codul muncii, iar fiecare cerere aprobată are un PDF gata de semnat.
 
-> **In English:** a leave-management web app for a Romanian company with several locations. Employees request leave online, every request goes to an admin for approval with rule warnings attached, leave balances accrue monthly and expire per the Romanian Labour Code, and every approved request gets a signable PDF. Built with Next.js 16, TypeScript, Prisma/PostgreSQL and NextAuth, with ~280 unit tests run in two time zones and CI.
+> **In English:** a leave-management web app for a Romanian company with several locations. Employees request leave online, every request goes to an admin for approval with rule warnings attached, leave balances accrue monthly and expire per the Romanian Labour Code, and every approved request gets a signable PDF. Built with Next.js 16, TypeScript, Prisma/PostgreSQL and NextAuth, with ~300 unit tests run in two time zones and CI.
 
 ![Panoul administratorului](docs/screenshots/admin-panou.png)
 
@@ -47,10 +47,12 @@ Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai mult
 - **Securitate**:
   - rolul și starea contului se reîncarcă periodic din baza de date, deci un cont dezactivat își pierde accesul în câteva minute;
   - schimbarea sau resetarea parolei închide toate sesiunile deschise ale contului (`sessionVersion`);
-  - rate limiting la login pe utilizator + IP, cu Upstash Redis;
+  - rate limiting la login pe utilizator + IP, cu Upstash Redis, iar login-ul durează la fel cu sau fără cont existent;
   - tokenurile de resetare se stochează doar ca hash, sunt de unică folosință și expiră într-o oră; răspunsul e același pentru orice utilizator, ca să nu se poată afla ce conturi există;
   - hash-urile parolelor sunt excluse global din interogările Prisma;
   - callbackUrl acceptă doar căi de pe același site.
+- **PDF-ul cererii e un document de personal**: la depunere se salvează numele, funcția, angajatorul și punctul de lucru (`employeeSnapshot`), deci PDF-ul generat oricând mai târziu arată datele de la data cererii, nu profilul editat între timp.
+- **Soldul se modifică atomic și rotunjit**: fiecare modificare e un singur `UPDATE` care adună și rotunjește la 2 zecimale în Postgres (`adjustAvailableDays`), fără zgomotul de virgulă mobilă (13,999999 în loc de 14).
 - **Serviciile externe sunt opționale**: fără chei Resend sau Supabase, aplicația face build și rulează, iar emailurile sunt doar sărite. PDF-urile se generează la cerere, cu fontul Noto Sans inclus, pentru diacritice corecte.
 
 ## Stack
@@ -125,3 +127,7 @@ Fără Vercel (de exemplu pe un PC din firmă, cu `npm run build` și `npm start
 O instanță demo publică are nevoie de un proiect Vercel separat, cu propria bază de date, `DEMO_MODE=true` și `NEXT_PUBLIC_DEMO_MODE=true`.
 
 CI-ul (`.github/workflows/ci.yml`) rulează la fiecare push lint-ul, verificarea de tipuri, testele în ambele fusuri orare și build-ul. Separat, aplică migrările pe un Postgres 16 și verifică dacă schema s-a îndepărtat de migrări.
+
+## Autor
+
+**Astefanei Razvan** · [LinkedIn](https://www.linkedin.com/in/razvan-astefanei-5b64ba32b/) · [GitHub](https://github.com/RedOctober7)
