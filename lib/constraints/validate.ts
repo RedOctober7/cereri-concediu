@@ -64,37 +64,16 @@ async function getActiveConstraints(workPointId: string | null) {
   });
 }
 
-async function countOverlappingApprovedLeaves(
-  workPointId: string,
-  startDate: Date,
-  endDate: Date,
-  excludeUserId: string
-) {
-  return prisma.leaveRequest.count({
-    where: {
-      user: { workPointId, active: true, deletedAt: null },
-      userId: { not: excludeUserId },
-      status: { in: [LeaveStatus.APPROVED_AUTO, LeaveStatus.APPROVED_ADMIN] },
-      startDate: { lte: endDate },
-      endDate: { gte: startDate },
-    },
-  });
-}
-
-async function countActiveUsersAtWorkPoint(workPointId: string) {
-  return prisma.user.count({
-    where: {
-      workPointId,
-      active: true,
-      deletedAt: null,
-      role: "EMPLOYEE",
-    },
-  });
-}
-
 type LeaveInterval = { startDate: Date; endDate: Date; workingDays: number };
 
 const daysFormatter = new Intl.NumberFormat("ro-RO", { maximumFractionDigits: 2 });
+
+/** „1 zi lucrătoare”, „5 zile lucrătoare”, „20 de zile lucrătoare”. */
+function workingDaysText(count: number): string {
+  if (count === 1) return "1 zi lucrătoare";
+  const lastTwo = count % 100;
+  return `${count} ${lastTwo === 0 || lastTwo >= 20 ? "de " : ""}zile lucrătoare`;
+}
 
 /**
  * Intervale de concediu lipite: între două cereri nu există nicio zi lucrătoare (ex.
@@ -123,7 +102,7 @@ export function mergeAdjacentLeaves(leaves: LeaveInterval[]): LeaveInterval[] {
 
 /**
  * MIN_ONE_VACATION_OF_N_DAYS (Codul muncii, art. 148: cel puțin 10 zile lucrătoare de
- * concediu neîntrerupt pe an). Nu blochează: cererea merge la admin când
+ * concediu neîntrerupt pe an). Nu blochează: adminul primește o atenționare când
  *  - în anul cererii (anul primei zile) angajatul nu are încă un concediu neîntrerupt
  *    de cel puțin `minDays` zile lucrătoare, aprobat sau în așteptare (cererea curentă
  *    și cererile lipite de ea contează: dacă împreună ajung la `minDays`, e în regulă);
@@ -196,12 +175,11 @@ async function uninterruptedVacationViolation({
     return null;
   }
 
-  return `În ${year} nu există încă un concediu neîntrerupt de cel puțin ${minDays} zile lucrătoare, iar după această cerere ar rămâne ${daysFormatter.format(after)} zile disponibile (Codul muncii, art. 148)`;
+  return `În ${year} nu există încă un concediu neîntrerupt de cel puțin ${workingDaysText(minDays)}, iar după această cerere ar rămâne ${daysFormatter.format(after)} zile disponibile (Codul muncii, art. 148)`;
 }
 
 function blocked(blockingError: string, workingDays: number): ValidationResult {
   return {
-    needsAdminApproval: true,
     violations: [],
     workingDays,
     blockingError,
@@ -251,9 +229,19 @@ export async function validateLeaveRequest(
     return blocked(OVERLAPPING_LEAVE_MESSAGE, workingDays);
   }
 
-  if (workingDays > user.availableDays) {
+  // Zilele cererilor în așteptare nu sunt încă scăzute din sold, dar sunt deja cerute:
+  // altfel două cereri care împreună depășesc soldul ar trece fiecare de verificare.
+  const pending = await prisma.leaveRequest.aggregate({
+    where: { userId, status: LeaveStatus.PENDING_ADMIN },
+    _sum: { workingDays: true },
+  });
+  const pendingDays = pending._sum.workingDays ?? 0;
+  const freeDays = Math.round((user.availableDays - pendingDays) * 100) / 100;
+  if (workingDays > freeDays) {
     violations.push(
-      `Cererea depășește zilele disponibile (${user.availableDays} disponibile, ${workingDays} solicitate)`
+      pendingDays > 0
+        ? `Cererea depășește zilele disponibile (${daysFormatter.format(freeDays)} disponibile după cererile în așteptare, ${workingDays} solicitate)`
+        : `Cererea depășește zilele disponibile (${daysFormatter.format(freeDays)} disponibile, ${workingDays} solicitate)`
     );
   }
 
@@ -275,15 +263,7 @@ export async function validateLeaveRequest(
         const minDate = addWorkingDays(today, config.days);
         if (start < minDate) {
           violations.push(
-            `Preaviz minim ${config.days} zile lucrătoare (cererea trebuia depusă cu cel puțin ${config.days} zile înainte)`
-          );
-        }
-        break;
-      }
-      case ConstraintType.MAX_CONSECUTIVE_DAYS: {
-        if (workingDays > config.days) {
-          violations.push(
-            `Maxim ${config.days} zile consecutive permise (solicitate: ${workingDays})`
+            `Preaviz minim ${workingDaysText(config.days)} (cererea trebuia depusă cu cel puțin ${workingDaysText(config.days)} înainte)`
           );
         }
         break;
@@ -293,29 +273,6 @@ export async function validateLeaveRequest(
           violations.push(
             `Luna ${monthName(config.month)} este perioadă restricționată`
           );
-        }
-        break;
-      }
-      case ConstraintType.MAX_CONCURRENT_PERCENT: {
-        if (user.workPointId) {
-          const overlapping = await countOverlappingApprovedLeaves(
-            user.workPointId,
-            start,
-            end,
-            userId
-          );
-          const totalAtWorkPoint = await countActiveUsersAtWorkPoint(
-            user.workPointId
-          );
-          if (totalAtWorkPoint > 0) {
-            const projectedPercent =
-              ((overlapping + 1) / totalAtWorkPoint) * 100;
-            if (projectedPercent > config.percent) {
-              violations.push(
-                `Maxim ${config.percent}% din echipă poate fi simultan în concediu (s-ar depăși: ${projectedPercent.toFixed(1)}%)`
-              );
-            }
-          }
         }
         break;
       }
@@ -342,7 +299,6 @@ export async function validateLeaveRequest(
   const uniqueViolations = [...new Set(violations)];
 
   return {
-    needsAdminApproval: uniqueViolations.length > 0,
     violations: uniqueViolations,
     workingDays,
     blockingError: null,

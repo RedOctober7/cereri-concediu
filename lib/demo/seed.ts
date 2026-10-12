@@ -182,17 +182,17 @@ export async function seedDemo(prisma: DemoClient, now: Date = new Date()) {
   const leaves: LeaveSpec[] = [
     // Concedii trecute, aprobate.
     { user: 0, offsetDays: -120, workingDays: 10, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 150 },
-    { user: 1, offsetDays: -60, workingDays: 5, status: LeaveStatus.APPROVED_AUTO, createdDaysAgo: 80 },
+    { user: 1, offsetDays: -60, workingDays: 5, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 80 },
     { user: 4, offsetDays: -45, workingDays: 10, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 70 },
-    { user: 7, offsetDays: -90, workingDays: 3, status: LeaveStatus.APPROVED_AUTO, createdDaysAgo: 100 },
+    { user: 7, offsetDays: -90, workingDays: 3, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 100 },
     // În concediu acum.
-    { user: 2, offsetDays: -2, workingDays: 5, status: LeaveStatus.APPROVED_AUTO, createdDaysAgo: 25 },
+    { user: 2, offsetDays: -2, workingDays: 5, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 25 },
     { user: 8, offsetDays: -1, workingDays: 3, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 12 },
     // Urmează.
-    { user: 5, offsetDays: 7, workingDays: 5, status: LeaveStatus.APPROVED_AUTO, createdDaysAgo: 6 },
-    { user: 0, offsetDays: 21, workingDays: 3, status: LeaveStatus.APPROVED_AUTO, createdDaysAgo: 4 },
+    { user: 5, offsetDays: 7, workingDays: 5, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 6 },
+    { user: 0, offsetDays: 21, workingDays: 3, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 4 },
     // În așteptarea deciziei adminului.
-    { user: 3, offsetDays: 1, workingDays: 3, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 0, violations: ["Preaviz minim 5 zile lucrătoare (cererea trebuia depusă cu cel puțin 5 zile înainte)"] },
+    { user: 3, offsetDays: 1, workingDays: 3, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 0, violations: ["Preaviz minim 5 zile lucrătoare (cererea trebuia depusă cu cel puțin 5 zile lucrătoare înainte)"] },
     { user: 6, offsetDays: 20, workingDays: 8, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 2, violations: ["Cererea depășește zilele disponibile (7 disponibile, 8 solicitate)"] },
     { user: 9, offsetDays: daysUntilDecember8(today), workingDays: 5, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 1, violations: ["Luna Decembrie este perioadă restricționată"] },
     // Respinse și anulate.
@@ -240,7 +240,6 @@ export async function seedDemo(prisma: DemoClient, now: Date = new Date()) {
     data: [
       { scope: ConstraintScope.GLOBAL, type: ConstraintType.MIN_NOTICE_DAYS, config: { days: 5 } },
       { scope: ConstraintScope.GLOBAL, type: ConstraintType.MIN_ONE_VACATION_OF_N_DAYS, config: { days: 10 } },
-      { scope: ConstraintScope.WORK_POINT, type: ConstraintType.MAX_CONCURRENT_PERCENT, workPointId: workPoints[0].id, config: { percent: 50 } },
       { scope: ConstraintScope.WORK_POINT, type: ConstraintType.BLACKOUT_MONTH, workPointId: workPoints[2].id, config: { month: 12 } },
     ],
   });

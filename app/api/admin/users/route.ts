@@ -67,7 +67,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const body: unknown = await request.json();
+    const body: unknown = await request.json().catch(() => null);
+    if (body === null) {
+      return NextResponse.json({ error: "Datele trimise nu sunt valide." }, { status: 400 });
+    }
     const parsed = userCreateSchema.safeParse(body);
 
     if (!parsed.success) {

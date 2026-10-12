@@ -43,6 +43,8 @@ const FIELD_LABELS: Record<string, string> = {
   endDate: "Sfârșit",
   violations: "Motive",
   status: "Status cerere",
+  previousStatus: "Status anterior",
+  refundedDays: "Zile returnate în sold",
   userId: "Angajat",
 };
 
@@ -102,7 +104,7 @@ function formatValue(key: string, value: unknown, lookups: AuditLookups): string
   if (key === "type" && typeof value === "string" && value in CONSTRAINT_TYPES) {
     return CONSTRAINT_TYPES[value as ConstraintType].label;
   }
-  if (key === "status" && typeof value === "string") {
+  if ((key === "status" || key === "previousStatus") && typeof value === "string") {
     return leaveStatusLabel(value as LeaveStatus);
   }
   if (typeof value === "boolean") {
@@ -334,6 +336,18 @@ export function formatAuditDetails(
     case "LEAVE_REJECTED": {
       if (details.emailFailed === true) {
         add("Email către angajat", "nu a putut fi trimis", "emailFailed");
+      }
+      break;
+    }
+
+    case "LEAVE_CANCELLED":
+    case "LEAVE_ADMIN_CANCELLED": {
+      if (isNumber(details.refundedDays) && details.refundedDays > 0) {
+        add("Zile returnate în sold", formatDays(details.refundedDays), "refundedDays");
+      }
+      handled.add("refundedDays");
+      if (isNumber(details.before) && isNumber(details.after)) {
+        add("Sold", `${formatDays(details.before)} → ${formatDays(details.after)}`, "before", "after");
       }
       break;
     }

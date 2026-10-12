@@ -17,7 +17,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const body: unknown = await request.json();
+    const body: unknown = await request.json().catch(() => null);
+    if (body === null) {
+      return NextResponse.json({ error: "Datele trimise nu sunt valide." }, { status: 400 });
+    }
     const parsed = changePasswordSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -63,6 +66,8 @@ export async function POST(request: Request) {
       data: {
         passwordHash,
         mustChangePassword: false,
+        // Închide celelalte sesiuni (și pe cea curentă: formularul cere relogarea).
+        sessionVersion: { increment: 1 },
       },
     });
 

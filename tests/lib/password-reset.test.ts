@@ -265,7 +265,7 @@ describe("confirmPasswordReset", () => {
     });
     expect(db.userUpdateMany).toHaveBeenCalledWith({
       where: { id: "u1", active: true, deletedAt: null },
-      data: { passwordHash: "hash(ParolaBuna1)", mustChangePassword: false },
+      data: { passwordHash: "hash(ParolaBuna1)", mustChangePassword: false, sessionVersion: { increment: 1 } },
     });
     expect(db.resetUpdateMany).toHaveBeenNthCalledWith(2, {
       where: { userId: "u1", used: false },

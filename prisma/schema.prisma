@@ -27,10 +27,8 @@ enum ConstraintScope {
 }
 
 enum ConstraintType {
-  MAX_CONCURRENT_PERCENT
   MIN_NOTICE_DAYS
   BLACKOUT_MONTH
-  MAX_CONSECUTIVE_DAYS
   MIN_ONE_VACATION_OF_N_DAYS
 }
 
@@ -50,6 +48,8 @@ model User {
   initialLeaveDays   Float      @default(0)
   availableDays      Float      @default(0)
   mustChangePassword Boolean    @default(false)
+  /// Crește la fiecare schimbare de parolă: sesiunile emise înainte devin invalide.
+  sessionVersion     Int        @default(0)
   active             Boolean    @default(true)
   deletedAt          DateTime?
   createdAt          DateTime   @default(now())
@@ -98,6 +98,9 @@ model LeaveRequest {
   workingDays      Int
   status           LeaveStatus
   violationReasons String[]
+  /// Numele, funcția, angajatorul și punctul de lucru la depunere: PDF-ul cererii nu se schimbă
+  /// dacă profilul angajatului e editat ulterior. Null pentru cererile mai vechi.
+  employeeSnapshot Json?
   rejectionReason  String?
   pdfUrl           String?
   approvedById     String?

@@ -17,7 +17,7 @@ import {
 
 export function ChangePasswordForm() {
   const router = useRouter();
-  const { data: session, update } = useSession();
+  const { data: session } = useSession();
   const [isLoading, setIsLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -47,26 +47,14 @@ export function ChangePasswordForm() {
         return;
       }
 
-      // Fără payload: serverul recitește mustChangePassword din baza de date.
-      const updated = await update();
       reset();
 
-      // Dacă sesiunea nu a putut fi reîmprospătată, cookie-ul vechi (cu
-      // mustChangePassword) ne-ar trimite înapoi aici; parola e deja schimbată,
-      // deci delogăm și cerem autentificare cu parola nouă.
-      if (!updated?.user || updated.user.mustChangePassword) {
-        toast.success(
-          "Parola a fost schimbată. Autentifică-te din nou cu parola nouă."
-        );
-        // Fără reîncărcare completă, ca mesajul să rămână vizibil pe pagina de login.
-        await signOut({ callbackUrl: "/login", redirect: false });
-        router.replace("/login");
-        router.refresh();
-        return;
-      }
-
-      toast.success("Parola a fost schimbată cu succes.");
-      router.push(updated.user.role === "ADMIN" ? "/admin" : "/dashboard");
+      // Schimbarea parolei închide toate sesiunile contului (sessionVersion), inclusiv
+      // pe aceasta: cerem autentificarea cu parola nouă.
+      toast.success("Parola a fost schimbată. Autentifică-te din nou cu parola nouă.");
+      // Fără reîncărcare completă, ca mesajul să rămână vizibil pe pagina de login.
+      await signOut({ callbackUrl: "/login", redirect: false });
+      router.replace("/login");
       router.refresh();
     } catch {
       toast.error(

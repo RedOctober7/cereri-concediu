@@ -70,7 +70,7 @@ export type UserDetail = {
   hireDate: string;
   workPointId: string | null;
   workPointName: string | null;
-  /** updatedAt (ISO): formularul de editare se remontează cu valorile noi după salvare. */
+  /** Valorile câmpurilor editabile: formularul se remontează doar când se schimbă ele (ex. după salvare). */
   version: string;
 };
 
@@ -307,7 +307,7 @@ function AdjustmentHistory({
               </div>
               <p className="break-words">{adjustment.reason}</p>
               <p className="text-xs text-muted-foreground">
-                Sold după: {formatDays(adjustment.after)} zile
+                Sold după: {pluralRo(adjustment.after, "zi", "zile")}
                 {adjustment.actorName ? ` · ${adjustment.actorName}` : ""}
               </p>
             </li>

@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import type { LeaveStatus, Prisma } from "@prisma/client";
 import { formatInTimeZone } from "date-fns-tz";
 import { authOptions } from "@/lib/auth";
-import { APP_TIME_ZONE } from "@/lib/dates";
+import { APP_TIME_ZONE, todayInBucharest } from "@/lib/dates";
+import { isApprovedStatus } from "@/lib/leaves/status";
+import { calculateWorkingDays } from "@/lib/holidays";
 import { prisma } from "@/lib/db";
 import {
   LeavesAdmin,
@@ -105,6 +107,7 @@ export default async function AdminCereriPage({
           jobTitle: true,
           active: true,
           deletedAt: true,
+          availableDays: true,
           workPoint: { select: { name: true } },
         },
       },
@@ -125,6 +128,7 @@ export default async function AdminCereriPage({
     approvers.map((user) => [user.id, `${user.firstName} ${user.lastName}`])
   );
 
+  const today = todayInBucharest();
   const rows: AdminLeaveRow[] = leaves.map((leave) => ({
     id: leave.id,
     employeeName: `${leave.user.firstName} ${leave.user.lastName}`,
@@ -133,7 +137,14 @@ export default async function AdminCereriPage({
     employeeInactive: !leave.user.active || leave.user.deletedAt !== null,
     workPointName: leave.user.workPoint?.name ?? null,
     period: formatPeriod(leave.startDate, leave.endDate),
-    workingDays: leave.workingDays,
+    // La o cerere în așteptare, zilele recalculate: exact ce scade aprobarea din sold
+    // (valoarea salvată poate fi veche, ex. sărbători adăugate între timp).
+    workingDays:
+      leave.status === "PENDING_ADMIN"
+        ? calculateWorkingDays(leave.startDate, leave.endDate)
+        : leave.workingDays,
+    employeeAvailableDays: leave.user.availableDays,
+    cancellable: isApprovedStatus(leave.status) && leave.startDate > today,
     status: leave.status,
     violationReasons: leave.violationReasons,
     rejectionReason: leave.rejectionReason,

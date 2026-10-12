@@ -42,10 +42,17 @@ export async function GET(request: Request) {
       name: getHolidayName(date) ?? "Sărbătoare legală",
     }));
 
+    // Doar concediile care ating anul afișat.
+    const yearOverlap = {
+      startDate: { lte: utcDate(year, 11, 31) },
+      endDate: { gte: utcDate(year, 0, 1) },
+    };
+
     const ownLeaves = await prisma.leaveRequest.findMany({
       where: {
         userId: auth.session.user.id,
         status: { notIn: [LeaveStatus.REJECTED, LeaveStatus.CANCELLED] },
+        ...yearOverlap,
       },
       select: {
         id: true,
@@ -66,12 +73,16 @@ export async function GET(request: Request) {
       ? await prisma.leaveRequest.findMany({
           where: {
             userId: { not: auth.session.user.id },
-            user: { workPointId: user.workPointId },
+            // Colegii dezactivați nu mai lipsesc de la punctul de lucru.
+            user: { workPointId: user.workPointId, active: true, deletedAt: null },
             status: {
               in: [LeaveStatus.APPROVED_AUTO, LeaveStatus.APPROVED_ADMIN],
             },
+            ...yearOverlap,
           },
-          include: {
+          select: {
+            startDate: true,
+            endDate: true,
             user: {
               select: { firstName: true, lastName: true },
             },

@@ -25,6 +25,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { formatDays } from "@/components/admin/format";
 import {
   Table,
   TableBody,
@@ -69,6 +71,10 @@ export type AdminLeaveRow = {
   workPointName: string | null;
   period: string;
   workingDays: number;
+  /** Soldul curent al angajatului (zilele cererilor în așteptare nu sunt scăzute). */
+  employeeAvailableDays: number;
+  /** Concediu aprobat care nu a început: adminul îl poate anula (zilele se întorc în sold). */
+  cancellable: boolean;
   status: LeaveStatus;
   violationReasons: string[];
   rejectionReason: string | null;
@@ -95,7 +101,7 @@ type Pagination = {
   nextHref: string | null;
 };
 
-type ApiResult = { error?: string; warning?: string };
+type ApiResult = { error?: string; warning?: string; code?: string };
 
 const REJECT_MIN_LENGTH = 10;
 const SEARCH_DEBOUNCE_MS = 350;
@@ -219,7 +225,14 @@ export function LeavesAdmin({
   );
 
   const [detailsRow, setDetailsRow] = useState<AdminLeaveRow | null>(null);
+  const [cancelRow, setCancelRow] = useState<AdminLeaveRow | null>(null);
   const [approveRow, setApproveRow] = useState<AdminLeaveRow | null>(null);
+  /** Serverul a cerut confirmarea aprobării peste sold (409 NEGATIVE_BALANCE). */
+  const [confirmNegative, setConfirmNegative] = useState(false);
+  const approveBalanceAfter = approveRow
+    ? Math.round((approveRow.employeeAvailableDays - approveRow.workingDays) * 100) / 100
+    : 0;
+  const approveNegative = approveBalanceAfter < 0 || confirmNegative;
   const [rejectRow, setRejectRow] = useState<AdminLeaveRow | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectTouched, setRejectTouched] = useState(false);
@@ -296,30 +309,55 @@ export function LeavesAdmin({
   }
 
   function openApprove(row: AdminLeaveRow) {
+    setConfirmNegative(false);
     setDetailsRow(null);
     setApproveRow(row);
   }
 
-  async function decide(row: AdminLeaveRow, action: "approve" | "reject") {
+  async function decide(
+    row: AdminLeaveRow,
+    action: "approve" | "reject" | "cancel",
+    allowNegativeBalance = false
+  ) {
     setSubmitting(true);
     try {
       const res = await fetch(`/api/admin/leaves/${row.id}/${action}`, {
         method: "POST",
-        ...(action === "reject"
-          ? {
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ rejectionReason: trimmedReason }),
-            }
-          : {}),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          action === "reject"
+            ? { rejectionReason: trimmedReason }
+            : action === "approve"
+              ? { allowNegativeBalance }
+              : {}
+        ),
       });
-      const data = (await res.json().catch(() => ({}))) as ApiResult;
+      // O sesiune expirată e redirecționată (de proxy) spre /login, care răspunde 200 cu
+      // HTML: fără verificarea asta am afișa „aprobată” deși nu s-a întâmplat nimic.
+      const data = res.redirected
+        ? null
+        : ((await res.json().catch(() => null)) as ApiResult | null);
+      if (res.ok && (data === null || typeof data !== "object")) {
+        toast.error(
+          "Sesiunea a expirat sau serverul a răspuns neașteptat. Reîncarcă pagina și autentifică-te din nou."
+        );
+        return;
+      }
 
-      if (!res.ok) {
-        toast.error(data.error ?? "A apărut o eroare. Reîncearcă.");
+      // Soldul s-a schimbat între timp: dialogul rămâne deschis și cere confirmarea.
+      if (res.status === 409 && data?.code === "NEGATIVE_BALANCE" && action === "approve") {
+        toast.warning(data.error ?? "Aprobarea ar face soldul negativ. Confirmă dacă vrei să continui.");
+        setConfirmNegative(true);
+        return;
+      }
+
+      if (!res.ok || !data) {
+        toast.error(data?.error ?? "A apărut o eroare. Reîncearcă.");
         // 4xx = cererea s-a schimbat între timp (sau nu mai există): închidem și reîncărcăm.
         if (res.status < 500) {
           setApproveRow(null);
           setRejectRow(null);
+          setCancelRow(null);
           startRefresh(() => router.refresh());
         }
         return;
@@ -329,11 +367,16 @@ export function LeavesAdmin({
         toast.warning(data.warning);
       } else {
         toast.success(
-          action === "approve" ? "Cererea a fost aprobată." : "Cererea a fost respinsă."
+          action === "approve"
+            ? "Cererea a fost aprobată."
+            : action === "reject"
+              ? "Cererea a fost respinsă."
+              : "Concediul a fost anulat, iar zilele au revenit în sold."
         );
       }
       setApproveRow(null);
       setRejectRow(null);
+      setCancelRow(null);
       startRefresh(() => router.refresh());
     } catch {
       toast.error("Serverul nu a putut fi contactat. Verifică conexiunea și reîncearcă.");
@@ -687,7 +730,7 @@ export function LeavesAdmin({
                   <p className="flex items-center gap-1.5 text-sm font-medium">
                     <TriangleAlert aria-hidden="true" className="size-4 text-muted-foreground" />
                     {detailsRow.status === "PENDING_ADMIN"
-                      ? "De ce are nevoie de aprobarea ta"
+                      ? "Atenționări pentru decizia ta"
                       : "Reguli încălcate la depunere"}
                   </p>
                   <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
@@ -717,11 +760,56 @@ export function LeavesAdmin({
                     </Button>
                   </>
                 ) : null}
+                {detailsRow.cancellable ? (
+                  <Button
+                    variant="destructive"
+                    disabled={busy}
+                    onClick={() => {
+                      setCancelRow(detailsRow);
+                      setDetailsRow(null);
+                    }}
+                  >
+                    <X />
+                    Anulează concediul
+                  </Button>
+                ) : null}
               </DialogFooter>
             </>
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {/* Confirmare anulare concediu aprobat */}
+      <AlertDialog
+        open={cancelRow !== null}
+        onOpenChange={(open) => !open && !submitting && setCancelRow(null)}
+      >
+        <AlertDialogContent>
+          {cancelRow ? (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Anulezi concediul aprobat?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {cancelRow.employeeName} · {cancelRow.period} ·{" "}
+                  {workingDaysLabel(cancelRow.workingDays)}. Zilele se întorc în soldul
+                  angajatului, iar acțiunea apare în jurnal. Anunță angajatul despre anulare.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={submitting}>Renunță</AlertDialogCancel>
+                <Button
+                  variant="destructive"
+                  disabled={submitting}
+                  onClick={() => void decide(cancelRow, "cancel")}
+                >
+                  {submitting ? <Loader2 className="animate-spin" /> : <X />}
+                  {submitting ? "Se anulează..." : "Anulează concediul"}
+                </Button>
+              </AlertDialogFooter>
+            </>
+          ) : null}
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Confirmare aprobare */}
       <AlertDialog
@@ -739,11 +827,31 @@ export function LeavesAdmin({
                   angajatul primește pe email confirmarea, cu cererea în PDF.
                 </AlertDialogDescription>
               </AlertDialogHeader>
+              <p className="text-sm">
+                Sold actual: <strong>{formatDays(approveRow.employeeAvailableDays)}</strong> ·
+                după aprobare:{" "}
+                <strong className={cn(approveNegative && "text-destructive")}>
+                  {formatDays(approveBalanceAfter)}
+                </strong>
+              </p>
+              {approveNegative ? (
+                <Alert variant="destructive">
+                  <TriangleAlert aria-hidden="true" />
+                  <AlertDescription>
+                    Soldul angajatului devine negativ. Aprobă doar dacă firma acordă concediu în
+                    avans; altfel respinge cererea sau ajustează soldul din fișa angajatului.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={submitting}>Renunță</AlertDialogCancel>
-                <Button disabled={submitting} onClick={() => void decide(approveRow, "approve")}>
+                <Button
+                  variant={approveNegative ? "destructive" : "default"}
+                  disabled={submitting}
+                  onClick={() => void decide(approveRow, "approve", approveNegative)}
+                >
                   {submitting ? <Loader2 className="animate-spin" /> : <Check />}
-                  {submitting ? "Se aprobă..." : "Aprobă"}
+                  {submitting ? "Se aprobă..." : approveNegative ? "Aprobă oricum" : "Aprobă"}
                 </Button>
               </AlertDialogFooter>
             </>

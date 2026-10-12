@@ -10,11 +10,13 @@ import {
 } from "@/lib/demo/seed";
 
 // Utilizare (DOAR pe baza instanței demo, ȘTERGE toate datele):
-//   DEMO_MODE=true npm run db:seed-demo
+//   bash:        DEMO_MODE=true npm run db:seed-demo
+//   PowerShell:  $env:DEMO_MODE = "true"; npm run db:seed-demo
+//   sau DEMO_MODE=true în .env.local
 async function main() {
   if (process.env.DEMO_MODE !== "true") {
     console.error(
-      "Refuz: scriptul șterge toată baza de date. Rulează-l doar pe instanța demo, cu DEMO_MODE=true."
+      "Refuz: scriptul șterge toată baza de date. Rulează-l doar pe instanța demo, cu DEMO_MODE=true (în .env.local sau ca variabilă de mediu)."
     );
     process.exit(1);
   }

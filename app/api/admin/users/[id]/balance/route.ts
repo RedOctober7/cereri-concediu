@@ -26,7 +26,10 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const { id } = await context.params;
-    const body: unknown = await request.json();
+    const body: unknown = await request.json().catch(() => null);
+    if (body === null) {
+      return NextResponse.json({ error: "Datele trimise nu sunt valide." }, { status: 400 });
+    }
     const parsed = balanceAdjustmentSchema.safeParse(body);
 
     if (!parsed.success) {

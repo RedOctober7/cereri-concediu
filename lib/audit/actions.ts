@@ -34,6 +34,7 @@ export const AUDIT_ACTIONS: Record<string, AuditActionInfo> = {
   LEAVE_ADMIN_APPROVED: { label: "Cerere aprobată", group: "leaves" },
   LEAVE_REJECTED: { label: "Cerere respinsă", group: "leaves", destructive: true },
   LEAVE_CANCELLED: { label: "Cerere anulată", group: "leaves" },
+  LEAVE_ADMIN_CANCELLED: { label: "Concediu anulat de administrator", group: "leaves", destructive: true },
 
   CREATE_WORK_POINT: { label: "Punct de lucru adăugat", group: "workPoints" },
   UPDATE_WORK_POINT: { label: "Punct de lucru modificat", group: "workPoints" },

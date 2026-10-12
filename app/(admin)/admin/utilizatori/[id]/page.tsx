@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { LeaveStatus } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { toDateOnlyString, todayInBucharest, utcDate } from "@/lib/dates";
+import { toDateOnlyString, todayInBucharest } from "@/lib/dates";
+import { overlapsYear, workingDaysInYear } from "@/lib/leaves/year-days";
 import { BALANCE_ADJUSTMENT_ACTION } from "@/lib/audit/actions";
 import {
   UserDetailClient,
@@ -95,14 +96,15 @@ export default async function UserDetailPage({
         },
       }),
       prisma.leaveRequest.count({ where: { userId: id } }),
-      // Concediul aprobat care începe anul acesta (an calendaristic, ora României).
-      prisma.leaveRequest.aggregate({
+      // Concediul aprobat din anul acesta (ora României); o cerere peste Revelion
+      // contează doar cu zilele din acest an, ca pe panoul angajatului și în raport.
+      prisma.leaveRequest.findMany({
         where: {
           userId: id,
           status: { in: [LeaveStatus.APPROVED_AUTO, LeaveStatus.APPROVED_ADMIN] },
-          startDate: { gte: utcDate(year, 0, 1), lt: utcDate(year + 1, 0, 1) },
+          ...overlapsYear(year),
         },
-        _sum: { workingDays: true },
+        select: { startDate: true, endDate: true, workingDays: true },
       }),
       prisma.leaveRequest.aggregate({
         where: { userId: id, status: LeaveStatus.PENDING_ADMIN },
@@ -161,7 +163,20 @@ export default async function UserDetailPage({
     hireDate: toDateOnlyString(user.hireDate),
     workPointId: user.workPointId,
     workPointName: user.workPoint?.name ?? null,
-    version: user.updatedAt.toISOString(),
+    // Doar câmpurile din formularul de editare: o ajustare de sold, o resetare de parolă
+    // sau schimbarea statusului nu trebuie să remonteze formularul (s-ar pierde ce
+    // adminul a scris și nu a salvat încă).
+    version: JSON.stringify([
+      user.firstName,
+      user.lastName,
+      user.email,
+      user.username,
+      user.jobTitle,
+      user.employer,
+      user.workPointId,
+      toDateOnlyString(user.hireDate),
+      user.initialLeaveDays,
+    ]),
   };
 
   const collator = new Intl.Collator("ro", { sensitivity: "base" });
@@ -175,7 +190,10 @@ export default async function UserDetailPage({
         jobTitles={otherUsers.map((row) => row.jobTitle).sort(collator.compare)}
         stats={{
           year,
-          takenThisYear: takenThisYear._sum.workingDays ?? 0,
+          takenThisYear: takenThisYear.reduce(
+            (sum, leave) => sum + workingDaysInYear(leave, year),
+            0
+          ),
           pendingCount: pending._count._all,
           pendingDays: pending._sum.workingDays ?? 0,
         }}

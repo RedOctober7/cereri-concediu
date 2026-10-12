@@ -9,6 +9,7 @@ import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { formatDays } from "@/components/admin/format";
+import { todayInBucharest } from "@/lib/dates";
 import { LeaveCalendar } from "@/components/calendar/LeaveCalendar";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +22,6 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type ValidationPreview = {
-  needsAdminApproval: boolean;
   violations: string[];
   workingDays: number;
   availableDays: number;
@@ -45,7 +45,7 @@ export function LeaveRequestForm({
   initialAvailableDays: number;
 }) {
   const router = useRouter();
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [year, setYear] = useState(() => todayInBucharest().getUTCFullYear());
   const [range, setRange] = useState<DateRange | undefined>();
   const [preview, setPreview] = useState<ValidationPreview | null>(null);
   const [previewError, setPreviewError] = useState<PreviewError | null>(null);
@@ -229,10 +229,10 @@ export function LeaveRequestForm({
                   </span>
                   <strong>{preview.workingDays}</strong>
                 </p>
-                {preview.needsAdminApproval ? (
+                {preview.violations.length > 0 ? (
                   <Alert>
                     <AlertCircle className="size-4" />
-                    <AlertTitle>Va ajunge la administrator</AlertTitle>
+                    <AlertTitle>Administratorul va vedea și aceste atenționări</AlertTitle>
                     <AlertDescription>
                       <ul className="mt-2 list-disc space-y-1 pl-4">
                         {preview.violations.map((v) => (
@@ -245,10 +245,10 @@ export function LeaveRequestForm({
                   <Alert className="border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30">
                     <CheckCircle2 className="size-4 text-emerald-600" />
                     <AlertTitle className="text-emerald-800 dark:text-emerald-300">
-                      Va fi aprobată automat
+                      Respectă toate regulile
                     </AlertTitle>
                     <AlertDescription>
-                      Cererea respectă toate regulile active.
+                      Cererea va fi trimisă administratorului spre aprobare.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -279,11 +279,14 @@ export function LeaveRequestForm({
           )}
         </Button>
 
-        <Link href="/dashboard">
-          <Button variant="outline" className="w-full">
-            Înapoi la panou
-          </Button>
-        </Link>
+        <Button
+          variant="outline"
+          className="w-full"
+          nativeButton={false}
+          render={<Link href="/dashboard" />}
+        >
+          Înapoi la panou
+        </Button>
       </div>
     </div>
   );

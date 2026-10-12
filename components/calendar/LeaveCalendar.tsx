@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, RotateCw } from "lucide-react";
 import { format } from "date-fns";
 import { ro } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
+import { todayInBucharest } from "@/lib/dates";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 type CalendarMeta = {
   holidays: Array<{ date: string; name: string }>;
@@ -28,21 +32,38 @@ export function LeaveCalendar({
 }: LeaveCalendarProps) {
   const [meta, setMeta] = useState<CalendarMeta | null>(null);
   const [loading, setLoading] = useState(true);
-  const [month, setMonth] = useState(() => new Date(year, new Date().getMonth(), 1));
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  // „Azi” în ora României (ca serverul), nu în fusul orar al procesului: altfel randarea
+  // pe server (UTC) și cea din browser ar diferi după miezul nopții.
   const today = useMemo(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const bucharest = todayInBucharest();
+    return new Date(bucharest.getUTCFullYear(), bucharest.getUTCMonth(), bucharest.getUTCDate());
   }, []);
+  const [month, setMonth] = useState(() => new Date(year, today.getMonth(), 1));
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
+      setLoadFailed(false);
       try {
         const res = await fetch(`/api/leaves/calendar-data?year=${year}`);
         const body = (await res.json()) as { data?: CalendarMeta; error?: string };
-        if (!cancelled && res.ok && body.data) {
+        if (cancelled) {
+          return;
+        }
+        if (res.ok && body.data) {
           setMeta(body.data);
+        } else {
+          setMeta(null);
+          setLoadFailed(true);
+        }
+      } catch {
+        // Rețea sau răspuns care nu e JSON (ex. sesiune expirată).
+        if (!cancelled) {
+          setMeta(null);
+          setLoadFailed(true);
         }
       } finally {
         if (!cancelled) {
@@ -54,7 +75,7 @@ export function LeaveCalendar({
     return () => {
       cancelled = true;
     };
-  }, [year]);
+  }, [year, reloadKey]);
 
   const holidayMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -110,6 +131,27 @@ export function LeaveCalendar({
       {loading ? (
         <p className="text-sm text-muted-foreground">Se încarcă calendarul...</p>
       ) : null}
+      {loadFailed && !loading ? (
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertTitle>Nu s-au putut încărca datele calendarului</AlertTitle>
+          <AlertDescription>
+            <p>
+              Sărbătorile și colegii în concediu nu sunt afișate. Poți alege totuși perioada:
+              zilele lucrătoare se calculează la verificare.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => setReloadKey((key) => key + 1)}
+            >
+              <RotateCw />
+              Reîncearcă
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <Calendar
         mode="range"
         locale={ro}
@@ -154,40 +196,42 @@ export function LeaveCalendar({
           <span className="size-3 rounded bg-sky-100 dark:bg-sky-950/50" /> Coleg în concediu
         </span>
       </div>
-      <div className="grid gap-3 border-t pt-3 text-sm sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <p className="font-medium">Cine lipsește în {format(month, "LLLL", { locale: ro })}</p>
-          {absentInMonth.length === 0 ? (
-            <p className="text-muted-foreground">Niciun coleg de la punctul tău de lucru.</p>
-          ) : (
-            <ul className="space-y-1">
-              {absentInMonth.map((a) => (
-                <li key={a.name} className="flex justify-between gap-2">
-                  <span>{a.name}</span>
-                  <span className="text-muted-foreground tabular-nums">
-                    {a.first === a.last ? shortDay(a.first) : `${shortDay(a.first)} – ${shortDay(a.last)}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+      {meta ? (
+        <div className="grid gap-3 border-t pt-3 text-sm sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <p className="font-medium">Cine lipsește în {format(month, "LLLL", { locale: ro })}</p>
+            {absentInMonth.length === 0 ? (
+              <p className="text-muted-foreground">Niciun coleg de la punctul tău de lucru.</p>
+            ) : (
+              <ul className="space-y-1">
+                {absentInMonth.map((a) => (
+                  <li key={a.name} className="flex justify-between gap-2">
+                    <span>{a.name}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {a.first === a.last ? shortDay(a.first) : `${shortDay(a.first)} – ${shortDay(a.last)}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <p className="font-medium">Sărbători legale</p>
+            {holidaysInMonth.length === 0 ? (
+              <p className="text-muted-foreground">Nicio sărbătoare legală în această lună.</p>
+            ) : (
+              <ul className="space-y-1">
+                {holidaysInMonth.map((h) => (
+                  <li key={h.date} className="flex justify-between gap-2">
+                    <span>{h.name}</span>
+                    <span className="text-muted-foreground tabular-nums">{shortDay(h.date)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <p className="font-medium">Sărbători legale</p>
-          {holidaysInMonth.length === 0 ? (
-            <p className="text-muted-foreground">Nicio sărbătoare legală în această lună.</p>
-          ) : (
-            <ul className="space-y-1">
-              {holidaysInMonth.map((h) => (
-                <li key={h.date} className="flex justify-between gap-2">
-                  <span>{h.name}</span>
-                  <span className="text-muted-foreground tabular-nums">{shortDay(h.date)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
+      ) : null}
     </div>
   );
 }

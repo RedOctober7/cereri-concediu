@@ -1,7 +1,10 @@
 import type { ConstraintScope, ConstraintType } from "@prisma/client";
 
 export type ValidationResult = {
-  needsAdminApproval: boolean;
+  /**
+   * Regulile încălcate. Nu blochează: toate cererile ajung la administrator, care vede
+   * aceste motive ca atenționări când decide.
+   */
   violations: string[];
   workingDays: number;
   /** Motiv pentru care cererea nu poate fi depusă deloc (nici spre admin). */
@@ -10,10 +13,8 @@ export type ValidationResult = {
 
 /** Config-ul (coloana JSON) pentru fiecare tip de regulă; validat de lib/validators.ts. */
 export type ConstraintConfigByType = {
-  MAX_CONCURRENT_PERCENT: { percent: number };
   MIN_NOTICE_DAYS: { days: number };
   BLACKOUT_MONTH: { month: number };
-  MAX_CONSECUTIVE_DAYS: { days: number };
   MIN_ONE_VACATION_OF_N_DAYS: { days: number };
 };
 
@@ -40,7 +41,7 @@ export function monthName(month: number): string {
 
 /** Câmpul editabil al fiecărui tip: cheia din config și cum se completează. */
 export type ConstraintField = {
-  key: "days" | "percent" | "month";
+  key: "days" | "month";
   label: string;
   /** Unitatea afișată lângă câmp (lipsește la lună, care e o listă). */
   unit?: string;
@@ -56,7 +57,7 @@ export type ConstraintTypeInfo = {
   field: ConstraintField;
 };
 
-// Toate regulile duc cererea la aprobarea adminului; niciuna nu o blochează.
+// Toate cererile ajung la administrator; o regulă încălcată doar îl atenționează.
 // Ordinea de aici este ordinea din pagina de reguli.
 export const CONSTRAINT_TYPES: Record<ConstraintType, ConstraintTypeInfo> = {
   MIN_NOTICE_DAYS: {
@@ -72,42 +73,16 @@ export const CONSTRAINT_TYPES: Record<ConstraintType, ConstraintTypeInfo> = {
       defaultValue: 5,
     },
   },
-  MAX_CONSECUTIVE_DAYS: {
-    label: "Durată maximă a unei cereri",
-    description:
-      "O singură cerere poate avea cel mult atâtea zile lucrătoare. Weekendurile și sărbătorile legale nu se numără.",
-    field: {
-      key: "days",
-      label: "Cel mult",
-      unit: "zile lucrătoare",
-      min: 1,
-      max: 366,
-      defaultValue: 15,
-    },
-  },
   BLACKOUT_MONTH: {
     label: "Lună restricționată",
     description:
-      "Cererile care includ măcar o zi din luna aleasă (în orice an) merg la aprobarea ta, ex. luna inventarului.",
+      "Cererile care includ măcar o zi din luna aleasă (în orice an) îți sunt semnalate, ex. luna inventarului.",
     field: { key: "month", label: "Luna", min: 1, max: 12, defaultValue: 12 },
-  },
-  MAX_CONCURRENT_PERCENT: {
-    label: "Absențe simultane în echipă",
-    description:
-      "Dacă, odată cu cererea, mai mult de acest procent dintre angajații activi ai punctului de lucru ar avea concediu aprobat în aceeași perioadă, cererea merge la aprobarea ta. Nu se aplică angajaților fără punct de lucru.",
-    field: {
-      key: "percent",
-      label: "Cel mult",
-      unit: "% din angajații punctului de lucru",
-      min: 1,
-      max: 100,
-      defaultValue: 30,
-    },
   },
   MIN_ONE_VACATION_OF_N_DAYS: {
     label: "Concediu neîntrerupt anual",
     description:
-      "Codul muncii (art. 148) cere ca fiecare angajat să efectueze în fiecare an cel puțin 10 zile lucrătoare de concediu neîntrerupt. Dacă angajatul nu are încă un astfel de concediu în anul cererii (aprobat sau în așteptare), iar cererea i-ar coborî soldul sub numărul de zile ales, cererea merge la aprobarea ta.",
+      "Codul muncii (art. 148) cere ca fiecare angajat să efectueze în fiecare an cel puțin 10 zile lucrătoare de concediu neîntrerupt. Dacă angajatul nu are încă un astfel de concediu în anul cererii (aprobat sau în așteptare), iar cererea i-ar coborî soldul sub numărul de zile ales, cererea îți este semnalată.",
     field: {
       key: "days",
       label: "Cel puțin",
@@ -149,12 +124,8 @@ export function describeConstraint(type: ConstraintType, config: unknown): strin
   switch (type) {
     case "MIN_NOTICE_DAYS":
       return `Cel puțin ${workingDays(value)} preaviz`;
-    case "MAX_CONSECUTIVE_DAYS":
-      return `Cel mult ${workingDays(value)} într-o cerere`;
     case "BLACKOUT_MONTH":
       return `Concediu în ${monthName(value).toLowerCase()}`;
-    case "MAX_CONCURRENT_PERCENT":
-      return `Cel mult ${value}% din echipă în concediu simultan`;
     case "MIN_ONE_VACATION_OF_N_DAYS":
       return `Un concediu neîntrerupt de cel puțin ${workingDays(value)} pe an`;
     default:

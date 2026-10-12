@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { UNEXPECTED_RESPONSE_ERROR } from '@/components/admin/form-utils';
 import {
   Card,
   CardAction,
@@ -47,6 +48,12 @@ const REPORTS: Report[] = [
 
 async function downloadReport(report: Report) {
   const res = await fetch(report.endpoint);
+  // O sesiune expirată e redirecționată spre /login (HTML cu 200): fără verificare am
+  // salva pagina de login ca .xlsx și am afișa „descărcat”.
+  const contentType = res.headers.get('Content-Type') ?? '';
+  if (res.ok && (res.redirected || !contentType.includes('spreadsheetml'))) {
+    throw new Error(UNEXPECTED_RESPONSE_ERROR);
+  }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? 'Raportul nu a putut fi generat. Reîncearcă.');

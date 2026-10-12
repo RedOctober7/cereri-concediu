@@ -57,7 +57,10 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const { id } = await context.params;
-    const body: unknown = await request.json();
+    const body: unknown = await request.json().catch(() => null);
+    if (body === null) {
+      return NextResponse.json({ error: "Datele trimise nu sunt valide." }, { status: 400 });
+    }
     const parsed = userUpdateSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -207,7 +210,8 @@ export async function PATCH(request: Request, context: RouteContext) {
               }
             : {}),
           ...(parsed.data.active !== undefined ? { active: parsed.data.active } : {}),
-          ...(passwordHash ? { passwordHash } : {}),
+          // O parolă nouă închide sesiunile deschise ale contului.
+          ...(passwordHash ? { passwordHash, sessionVersion: { increment: 1 } } : {}),
           ...(parsed.data.forcePasswordReset !== undefined
             ? { mustChangePassword: parsed.data.forcePasswordReset }
             : {}),

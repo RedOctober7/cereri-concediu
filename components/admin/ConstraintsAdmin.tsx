@@ -6,7 +6,6 @@ import type { ConstraintScope, ConstraintType } from "@prisma/client";
 import {
   CalendarClock,
   CalendarOff,
-  CalendarRange,
   Globe,
   Info,
   Loader2,
@@ -17,7 +16,6 @@ import {
   PowerOff,
   Trash2,
   TreePalm,
-  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -61,6 +59,7 @@ import {
 } from "@/lib/constraints/types";
 import { constraintCreateSchema } from "@/lib/validators";
 import { cn } from "@/lib/utils";
+import { pluralRo } from "@/components/admin/format";
 
 type WorkPoint = { id: string; name: string; active: boolean };
 
@@ -75,9 +74,7 @@ export type ConstraintRow = {
 
 const TYPE_ICONS: Record<ConstraintType, LucideIcon> = {
   MIN_NOTICE_DAYS: CalendarClock,
-  MAX_CONSECUTIVE_DAYS: CalendarRange,
   BLACKOUT_MONTH: CalendarOff,
-  MAX_CONCURRENT_PERCENT: UsersRound,
   MIN_ONE_VACATION_OF_N_DAYS: TreePalm,
 };
 
@@ -487,7 +484,7 @@ export function ConstraintsAdmin({
         title="Reguli"
         description={
           constraints.length > 0
-            ? `${activeCount} din ${constraints.length} reguli sunt active.`
+            ? `Active: ${activeCount} din ${pluralRo(constraints.length, "regulă", "reguli")}.`
             : "Condițiile verificate la fiecare cerere de concediu."
         }
         actions={
@@ -501,9 +498,9 @@ export function ConstraintsAdmin({
       <Alert>
         <Info aria-hidden="true" />
         <AlertDescription>
-          Regulile nu resping cereri. Când o cerere încalcă o regulă activă, angajatul vede
-          motivul la depunere, iar cererea ajunge la tine spre aprobare. Cererile care respectă
-          toate regulile și au sold suficient se aprobă automat.
+          Toate cererile de concediu ajung la tine spre aprobare; niciuna nu se aprobă automat.
+          Regulile nu resping cereri: când o cerere încalcă o regulă activă, angajatul vede motivul
+          la depunere, iar tu îl vezi ca atenționare lângă cerere.
         </AlertDescription>
       </Alert>
 
