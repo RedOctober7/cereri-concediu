@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/api-auth';
 import { prisma } from '@/lib/db';
-import { todayInBucharest, utcDate } from '@/lib/dates';
+import { todayInBucharest } from '@/lib/dates';
 import ExcelJS from 'exceljs';
+import { overlapsYear, workingDaysInYear } from '@/lib/leaves/year-days';
 
 export async function GET() {
   const auth = await requireAdminSession();
@@ -21,10 +22,8 @@ export async function GET() {
       leaveRequests: {
         where: {
           status: { in: ['APPROVED_AUTO', 'APPROVED_ADMIN'] },
-          startDate: {
-            gte: utcDate(year, 0, 1),
-            lt: utcDate(year + 1, 0, 1),
-          },
+          // Și cererile peste Revelion: se numără doar zilele din anul curent.
+          ...overlapsYear(year),
         },
       },
       accruals: {
@@ -56,7 +55,7 @@ export async function GET() {
 
   for (const user of users) {
     const accrued = user.accruals.reduce((sum, a) => sum + a.days, 0);
-    const used = user.leaveRequests.reduce((sum, r) => sum + r.workingDays, 0);
+    const used = user.leaveRequests.reduce((sum, r) => sum + workingDaysInYear(r, year), 0);
 
     sheet.addRow({
       name: `${user.lastName} ${user.firstName}`,

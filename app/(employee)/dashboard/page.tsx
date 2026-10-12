@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { CalendarClock, CalendarPlus } from "lucide-react";
 import { authOptions } from "@/lib/auth";
-import { formatDay, formatDays } from "@/components/admin/format";
+import { formatDay, formatDays, formatMonthYear, pluralRo } from "@/components/admin/format";
 import { getEmployeeDashboardStats } from "@/lib/leaves/employee-stats";
 import { getUpcomingExpiry } from "@/lib/leaves/expiring";
 import { todayInBucharest } from "@/lib/dates";
@@ -67,8 +67,8 @@ export default async function DashboardPage() {
         >
           <CalendarClock />
           <AlertTitle>
-            {formatDays(expiringDays)} {expiringDays === 1 ? "zi" : "zile"} din {expiry.year}{" "}
-            expiră pe {formatDay(expiry.lastDay)}
+            {pluralRo(expiringDays, "zi", "zile")} din {expiry.year} expiră pe{" "}
+            {formatDay(expiry.lastDay)}
           </AlertTitle>
           <AlertDescription>
             Zilele de concediu neefectuate se pot lua în cel mult 18 luni de la sfârșitul anului
@@ -93,8 +93,12 @@ export default async function DashboardPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>Zile acumulate luna curentă</CardDescription>
-            <CardTitle>{formatDays(stats.monthlyAccrualDays)}</CardTitle>
+            <CardDescription>
+              {stats.lastAccrual
+                ? `Zile acumulate în ${formatMonthYear(stats.lastAccrual.month, stats.lastAccrual.year)}`
+                : "Zile acumulate luna trecută"}
+            </CardDescription>
+            <CardTitle>{formatDays(stats.lastAccrual?.days ?? 0)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
@@ -131,7 +135,7 @@ export default async function DashboardPage() {
                     {formatDay(leave.endDate)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {leave.workingDays} zile lucrătoare
+                    {pluralRo(leave.workingDays, "zi lucrătoare", "zile lucrătoare")}
                   </p>
                 </div>
                 <Badge
