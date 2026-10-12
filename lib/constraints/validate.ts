@@ -95,7 +95,7 @@ export function mergeAdjacentLeaves(leaves: LeaveInterval[]): LeaveInterval[] {
 
 /**
  * MIN_ONE_VACATION_OF_N_DAYS (Codul muncii, art. 148: cel puțin 10 zile lucrătoare de
- * concediu neîntrerupt pe an). Nu blochează: cererea merge la admin când
+ * concediu neîntrerupt pe an). Nu blochează: adminul primește o atenționare când
  *  - în anul cererii (anul primei zile) angajatul nu are încă un concediu neîntrerupt
  *    de cel puțin `minDays` zile lucrătoare, aprobat sau în așteptare (cererea curentă
  *    și cererile lipite de ea contează: dacă împreună ajung la `minDays`, e în regulă);
@@ -173,7 +173,6 @@ async function uninterruptedVacationViolation({
 
 function blocked(blockingError: string, workingDays: number): ValidationResult {
   return {
-    needsAdminApproval: true,
     violations: [],
     workingDays,
     blockingError,
@@ -283,7 +282,6 @@ export async function validateLeaveRequest(
   const uniqueViolations = [...new Set(violations)];
 
   return {
-    needsAdminApproval: uniqueViolations.length > 0,
     violations: uniqueViolations,
     workingDays,
     blockingError: null,

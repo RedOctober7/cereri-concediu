@@ -497,9 +497,9 @@ export function ConstraintsAdmin({
       <Alert>
         <Info aria-hidden="true" />
         <AlertDescription>
-          Regulile nu resping cereri. Când o cerere încalcă o regulă activă, angajatul vede
-          motivul la depunere, iar cererea ajunge la tine spre aprobare. Cererile care respectă
-          toate regulile și au sold suficient se aprobă automat.
+          Toate cererile de concediu ajung la tine spre aprobare; niciuna nu se aprobă automat.
+          Regulile nu resping cereri: când o cerere încalcă o regulă activă, angajatul vede motivul
+          la depunere, iar tu îl vezi ca atenționare lângă cerere.
         </AlertDescription>
       </Alert>
 

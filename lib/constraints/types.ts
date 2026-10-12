@@ -1,7 +1,10 @@
 import type { ConstraintScope, ConstraintType } from "@prisma/client";
 
 export type ValidationResult = {
-  needsAdminApproval: boolean;
+  /**
+   * Regulile încălcate. Nu blochează: toate cererile ajung la administrator, care vede
+   * aceste motive ca atenționări când decide.
+   */
   violations: string[];
   workingDays: number;
   /** Motiv pentru care cererea nu poate fi depusă deloc (nici spre admin). */
@@ -54,7 +57,7 @@ export type ConstraintTypeInfo = {
   field: ConstraintField;
 };
 
-// Toate regulile duc cererea la aprobarea adminului; niciuna nu o blochează.
+// Toate cererile ajung la administrator; o regulă încălcată doar îl atenționează.
 // Ordinea de aici este ordinea din pagina de reguli.
 export const CONSTRAINT_TYPES: Record<ConstraintType, ConstraintTypeInfo> = {
   MIN_NOTICE_DAYS: {
@@ -73,13 +76,13 @@ export const CONSTRAINT_TYPES: Record<ConstraintType, ConstraintTypeInfo> = {
   BLACKOUT_MONTH: {
     label: "Lună restricționată",
     description:
-      "Cererile care includ măcar o zi din luna aleasă (în orice an) merg la aprobarea ta, ex. luna inventarului.",
+      "Cererile care includ măcar o zi din luna aleasă (în orice an) îți sunt semnalate, ex. luna inventarului.",
     field: { key: "month", label: "Luna", min: 1, max: 12, defaultValue: 12 },
   },
   MIN_ONE_VACATION_OF_N_DAYS: {
     label: "Concediu neîntrerupt anual",
     description:
-      "Codul muncii (art. 148) cere ca fiecare angajat să efectueze în fiecare an cel puțin 10 zile lucrătoare de concediu neîntrerupt. Dacă angajatul nu are încă un astfel de concediu în anul cererii (aprobat sau în așteptare), iar cererea i-ar coborî soldul sub numărul de zile ales, cererea merge la aprobarea ta.",
+      "Codul muncii (art. 148) cere ca fiecare angajat să efectueze în fiecare an cel puțin 10 zile lucrătoare de concediu neîntrerupt. Dacă angajatul nu are încă un astfel de concediu în anul cererii (aprobat sau în așteptare), iar cererea i-ar coborî soldul sub numărul de zile ales, cererea îți este semnalată.",
     field: {
       key: "days",
       label: "Cel puțin",

@@ -50,9 +50,8 @@ describe("validateLeaveRequest", () => {
     vi.clearAllMocks();
   });
 
-  it("o cerere fără probleme se aprobă automat", async () => {
+  it("o cerere fără probleme nu are atenționări", async () => {
     await expect(validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"))).resolves.toEqual({
-      needsAdminApproval: false,
       violations: [],
       workingDays: 5,
       blockingError: null,
@@ -63,7 +62,6 @@ describe("validateLeaveRequest", () => {
     it("o perioadă care începe în trecut", async () => {
       const result = await validateLeaveRequest(USER_ID, day("2026-10-09"), day("2026-10-14"));
       expect(result.blockingError).toBe("Perioada selectată trebuie să fie în viitor.");
-      expect(result.needsAdminApproval).toBe(true);
       expect(db.user.findUnique).not.toHaveBeenCalled();
     });
 
@@ -83,7 +81,6 @@ describe("validateLeaveRequest", () => {
     ])("zero zile lucrătoare: %s", async (_label, start, end) => {
       const result = await validateLeaveRequest(USER_ID, day(start), day(end));
       expect(result).toEqual({
-        needsAdminApproval: true,
         violations: [],
         workingDays: 0,
         blockingError: "Selectează cel puțin o zi lucrătoare.",
@@ -123,11 +120,10 @@ describe("validateLeaveRequest", () => {
     });
   });
 
-  describe("încălcări (cererea merge la administrator)", () => {
+  describe("încălcări (atenționări pentru administrator)", () => {
     it("mai multe zile decât soldul", async () => {
       db.user.findUnique.mockResolvedValue(activeUser({ availableDays: 3 }));
       const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
-      expect(result.needsAdminApproval).toBe(true);
       expect(result.blockingError).toBeNull();
       expect(result.violations).toEqual([
         "Cererea depășește zilele disponibile (3 disponibile, 5 solicitate)",
@@ -143,7 +139,6 @@ describe("validateLeaveRequest", () => {
       const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
 
       expect(result.blockingError).toBeNull();
-      expect(result.needsAdminApproval).toBe(true);
       expect(result.violations).toEqual([
         "Preaviz minim 10 zile lucrătoare (cererea trebuia depusă cu cel puțin 10 zile înainte)",
         "Luna Octombrie este perioadă restricționată",
@@ -164,7 +159,6 @@ describe("validateLeaveRequest", () => {
 
       const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
       expect(result.violations).toEqual([]);
-      expect(result.needsAdminApproval).toBe(false);
     });
 
   });
@@ -177,7 +171,6 @@ describe("validateLeaveRequest", () => {
       db.constraint.findMany.mockResolvedValue(rule());
       const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
       expect(result.blockingError).toBeNull();
-      expect(result.needsAdminApproval).toBe(true);
       expect(result.violations).toHaveLength(1);
       expect(result.violations[0]).toMatch(/^În 2026 nu există încă un concediu neîntrerupt de cel puțin 10 zile lucrătoare, iar după această cerere ar rămâne 7 zile disponibile/);
     });
@@ -187,7 +180,6 @@ describe("validateLeaveRequest", () => {
       db.constraint.findMany.mockResolvedValue(rule());
       const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
       expect(result.violations).toEqual([]);
-      expect(result.needsAdminApproval).toBe(false);
     });
 
     it("un concediu aprobat de cel puțin N zile în același an: fără încălcare", async () => {

@@ -9,10 +9,7 @@ import {
   validateLeaveRequest,
 } from "@/lib/constraints/validate";
 import { createAuditLog } from "@/lib/audit/log";
-import {
-  notifyAdminsLeavePending,
-  notifyLeaveApproved,
-} from "@/lib/emails/leave-notifications";
+import { notifyAdminsLeavePending } from "@/lib/emails/leave-notifications";
 
 export async function GET() {
   try {
@@ -57,7 +54,8 @@ export async function POST(request: Request) {
     const start = parsed.data.startDate;
     const end = parsed.data.endDate;
 
-    // Aceleași reguli ca la previzualizare (GET /api/leaves/validate).
+    // Aceleași reguli ca la previzualizare (GET /api/leaves/validate). Nicio cerere nu
+    // se aprobă automat: toate ajung la administrator, cu regulile încălcate ca atenționări.
     const validation = await validateLeaveRequest(
       auth.session.user.id,
       start,
@@ -81,39 +79,6 @@ export async function POST(request: Request) {
         throw new Error("OVERLAPPING_LEAVE");
       }
 
-      if (!validation.needsAdminApproval) {
-        const user = await tx.user.findUnique({
-          where: { id: auth.session.user.id },
-        });
-        if (!user) {
-          throw new Error("USER_NOT_FOUND");
-        }
-        if (validation.workingDays > user.availableDays) {
-          throw new Error("INSUFFICIENT_DAYS");
-        }
-
-        const created = await tx.leaveRequest.create({
-          data: {
-            userId: auth.session.user.id,
-            startDate: start,
-            endDate: end,
-            workingDays: validation.workingDays,
-            status: LeaveStatus.APPROVED_AUTO,
-            violationReasons: [],
-            approvedAt: new Date(),
-          },
-        });
-
-        await tx.user.update({
-          where: { id: auth.session.user.id },
-          data: {
-            availableDays: { decrement: validation.workingDays },
-          },
-        });
-
-        return created;
-      }
-
       return tx.leaveRequest.create({
         data: {
           userId: auth.session.user.id,
@@ -128,9 +93,7 @@ export async function POST(request: Request) {
 
     await createAuditLog({
       userId: auth.session.user.id,
-      action: validation.needsAdminApproval
-        ? "LEAVE_PENDING_ADMIN"
-        : "LEAVE_AUTO_APPROVED",
+      action: "LEAVE_PENDING_ADMIN",
       entityType: "LeaveRequest",
       entityId: leave.id,
       details: {
@@ -143,40 +106,22 @@ export async function POST(request: Request) {
 
     // După răspuns: PDF-ul, stocarea și emailurile nu întârzie și nu pot face să
     // eșueze cererea, care e deja salvată (funcțiile notify* nu aruncă).
-    after(() =>
-      leave.status === LeaveStatus.APPROVED_AUTO
-        ? notifyLeaveApproved(leave.id)
-        : notifyAdminsLeavePending(leave.id)
-    );
+    after(() => notifyAdminsLeavePending(leave.id));
 
     return NextResponse.json(
       {
         data: leave,
         validation,
-        message: validation.needsAdminApproval
-          ? "Cerere trimisă spre aprobare administrator."
-          : "Cerere aprobată automat.",
+        message: "Cerere trimisă spre aprobare administrator.",
       },
       { status: 201 }
     );
   } catch (error) {
     if (error instanceof Error) {
-      if (error.message === "INSUFFICIENT_DAYS") {
-        return NextResponse.json(
-          { error: "Nu ai suficiente zile disponibile." },
-          { status: 400 }
-        );
-      }
       if (error.message === "OVERLAPPING_LEAVE") {
         return NextResponse.json(
           { error: OVERLAPPING_LEAVE_MESSAGE },
           { status: 400 }
-        );
-      }
-      if (error.message === "USER_NOT_FOUND") {
-        return NextResponse.json(
-          { error: "Contul nu a fost găsit." },
-          { status: 404 }
         );
       }
     }
