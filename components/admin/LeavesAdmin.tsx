@@ -101,7 +101,7 @@ type Pagination = {
   nextHref: string | null;
 };
 
-type ApiResult = { error?: string; warning?: string };
+type ApiResult = { error?: string; warning?: string; code?: string };
 
 const REJECT_MIN_LENGTH = 10;
 const SEARCH_DEBOUNCE_MS = 350;
@@ -227,9 +227,12 @@ export function LeavesAdmin({
   const [detailsRow, setDetailsRow] = useState<AdminLeaveRow | null>(null);
   const [cancelRow, setCancelRow] = useState<AdminLeaveRow | null>(null);
   const [approveRow, setApproveRow] = useState<AdminLeaveRow | null>(null);
+  /** Serverul a cerut confirmarea aprobării peste sold (409 NEGATIVE_BALANCE). */
+  const [confirmNegative, setConfirmNegative] = useState(false);
   const approveBalanceAfter = approveRow
     ? Math.round((approveRow.employeeAvailableDays - approveRow.workingDays) * 100) / 100
     : 0;
+  const approveNegative = approveBalanceAfter < 0 || confirmNegative;
   const [rejectRow, setRejectRow] = useState<AdminLeaveRow | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectTouched, setRejectTouched] = useState(false);
@@ -306,6 +309,7 @@ export function LeavesAdmin({
   }
 
   function openApprove(row: AdminLeaveRow) {
+    setConfirmNegative(false);
     setDetailsRow(null);
     setApproveRow(row);
   }
@@ -337,6 +341,13 @@ export function LeavesAdmin({
         toast.error(
           "Sesiunea a expirat sau serverul a răspuns neașteptat. Reîncarcă pagina și autentifică-te din nou."
         );
+        return;
+      }
+
+      // Soldul s-a schimbat între timp: dialogul rămâne deschis și cere confirmarea.
+      if (res.status === 409 && data?.code === "NEGATIVE_BALANCE" && action === "approve") {
+        toast.warning(data.error ?? "Aprobarea ar face soldul negativ. Confirmă dacă vrei să continui.");
+        setConfirmNegative(true);
         return;
       }
 
@@ -819,11 +830,11 @@ export function LeavesAdmin({
               <p className="text-sm">
                 Sold actual: <strong>{formatDays(approveRow.employeeAvailableDays)}</strong> ·
                 după aprobare:{" "}
-                <strong className={cn(approveBalanceAfter < 0 && "text-destructive")}>
+                <strong className={cn(approveNegative && "text-destructive")}>
                   {formatDays(approveBalanceAfter)}
                 </strong>
               </p>
-              {approveBalanceAfter < 0 ? (
+              {approveNegative ? (
                 <Alert variant="destructive">
                   <TriangleAlert aria-hidden="true" />
                   <AlertDescription>
@@ -835,12 +846,12 @@ export function LeavesAdmin({
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={submitting}>Renunță</AlertDialogCancel>
                 <Button
-                  variant={approveBalanceAfter < 0 ? "destructive" : "default"}
+                  variant={approveNegative ? "destructive" : "default"}
                   disabled={submitting}
-                  onClick={() => void decide(approveRow, "approve", approveBalanceAfter < 0)}
+                  onClick={() => void decide(approveRow, "approve", approveNegative)}
                 >
                   {submitting ? <Loader2 className="animate-spin" /> : <Check />}
-                  {submitting ? "Se aprobă..." : approveBalanceAfter < 0 ? "Aprobă oricum" : "Aprobă"}
+                  {submitting ? "Se aprobă..." : approveNegative ? "Aprobă oricum" : "Aprobă"}
                 </Button>
               </AlertDialogFooter>
             </>

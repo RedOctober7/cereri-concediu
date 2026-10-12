@@ -61,9 +61,14 @@ function changedFields(initial: UserFieldValues, current: UserFieldValues) {
   for (const key of Object.keys(after) as (keyof typeof after)[]) {
     const a = before[key];
     const b = after[key];
+    // Serverul salvează emailul și numele de utilizator cu litere mici: o schimbare doar
+    // de majuscule nu e o modificare (altfel formularul ar rămâne „nesalvat” după salvare).
+    const caseInsensitive = key === "email" || key === "username";
     const same =
       typeof a === "string" && typeof b === "string"
-        ? a.trim() === b.trim()
+        ? caseInsensitive
+          ? a.trim().toLowerCase() === b.trim().toLowerCase()
+          : a.trim() === b.trim()
         : Object.is(a, b);
     if (!same) {
       changed[key] = b;

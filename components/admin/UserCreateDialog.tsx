@@ -141,7 +141,7 @@ export function UserCreateDialog({
     if (result.warning) {
       setCredentials({
         name: `${result.data.firstName} ${result.data.lastName}`,
-        username: parsed.data.username,
+        username: parsed.data.username.toLowerCase(),
         password,
         warning: result.warning,
       });
@@ -156,7 +156,9 @@ export function UserCreateDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!submitting) {
+        // Cât timp sunt afișate datele de autentificare (singurul loc unde apare parola),
+        // dialogul se închide doar din „Gata”, nu la Esc sau la un click în afară.
+        if (!submitting && !credentials) {
           onOpenChange(next);
         }
       }}
@@ -205,7 +207,9 @@ export function UserCreateDialog({
               </div>
             </dl>
             <DialogFooter>
-              <DialogClose render={<Button type="button" />}>Gata</DialogClose>
+              <Button type="button" onClick={() => onOpenChange(false)}>
+                Gata
+              </Button>
             </DialogFooter>
           </>
         ) : (
