@@ -17,8 +17,9 @@ import {
 
 export function ChangePasswordForm() {
   const router = useRouter();
-  const { update } = useSession();
+  const { data: session, update } = useSession();
   const [isLoading, setIsLoading] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const {
     register,
@@ -139,6 +140,21 @@ export function ChangePasswordForm() {
           "Salvează parola"
         )}
       </Button>
+
+      <p className="text-center text-sm text-muted-foreground">
+        {session?.user?.name ? `Conectat ca ${session.user.name}. ` : null}
+        <button
+          type="button"
+          className="font-medium text-foreground underline underline-offset-4 hover:text-primary disabled:opacity-50"
+          disabled={isLoading || signingOut}
+          onClick={() => {
+            setSigningOut(true);
+            void signOut({ callbackUrl: "/login" }).catch(() => setSigningOut(false));
+          }}
+        >
+          {signingOut ? "Se deconectează..." : "Deconectează-te"}
+        </button>
+      </p>
     </form>
   );
 }
