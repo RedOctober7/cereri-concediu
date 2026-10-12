@@ -14,6 +14,7 @@ import {
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { APP_TIME_ZONE, addDaysUTC, todayInBucharest } from "@/lib/dates";
+import { getUpcomingExpiry } from "@/lib/leaves/expiring";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -197,6 +198,61 @@ function MoreLink({ href, children }: { href: string; children: React.ReactNode 
         <ArrowRight data-icon="inline-end" />
       </Link>
     </CardFooter>
+  );
+}
+
+/** Angajații cu zile care expiră la următorul termen (art. 146 alin. 2), cele mai multe primele. */
+async function ExpiringDaysCard() {
+  const employees = await prisma.user.findMany({
+    where: activeEmployeeWhere,
+    select: { id: true, firstName: true, lastName: true, workPoint: { select: { name: true } } },
+  });
+  const expiry = await getUpcomingExpiry(employees.map((employee) => employee.id));
+  const lastDayLabel = formatInTimeZone(expiry.lastDay, "UTC", "d MMMM yyyy", { locale: ro });
+  const rows = employees
+    .filter((employee) => expiry.byUser.has(employee.id))
+    .map((employee) => ({ ...employee, days: expiry.byUser.get(employee.id) ?? 0 }))
+    .sort((a, b) => b.days - a.days || a.lastName.localeCompare(b.lastName, "ro"));
+  const totalDays = rows.reduce((sum, row) => sum + row.days, 0);
+  const shown = rows.slice(0, LIST_LIMIT);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Zile care expiră pe {lastDayLabel}</CardTitle>
+        <CardDescription>
+          Zile din {expiry.year} încă neplanificate. Dacă nu sunt luate până atunci, expiră
+          (Codul muncii, art. 146 alin. 2). Angajații văd același avertisment în panoul lor.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <EmptyText>Niciun angajat nu are zile din {expiry.year} care să expire.</EmptyText>
+        ) : (
+          <ul className="divide-y">
+            {shown.map((row) => (
+              <PersonRow
+                key={row.id}
+                firstName={row.firstName}
+                lastName={row.lastName}
+                href={`/admin/utilizatori/${row.id}`}
+                detail={row.workPoint?.name ?? "Fără punct de lucru"}
+                aside={
+                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                    {formatDays(row.days)} {row.days === 1 ? "zi" : "zile"}
+                  </Badge>
+                }
+              />
+            ))}
+          </ul>
+        )}
+        {rows.length > shown.length ? (
+          <p className="pt-2 text-xs text-muted-foreground">
+            Încă {pluralRo(rows.length - shown.length, "angajat", "angajați")}. În total {formatDays(totalDays)} zile.
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -486,6 +542,8 @@ async function DashboardContent() {
           </CardContent>
         </Card>
       </div>
+
+      <ExpiringDaysCard />
 
       <Card>
         <CardHeader>

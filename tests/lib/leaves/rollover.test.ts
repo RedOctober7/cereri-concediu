@@ -4,6 +4,8 @@ import {
   computeExpiringDays,
   expiryDeadline,
   latestExpiredYear,
+  nextExpiringYear,
+  projectExpiringDays,
   openingBalanceYear,
   parseRolloverDetails,
   pendingDaysBefore,
@@ -319,5 +321,76 @@ describe("planRollover", () => {
         approvedLeaves: [],
       })
     ).toEqual([]);
+  });
+});
+
+describe("nextExpiringYear", () => {
+  it("este anul de după ultimul an expirat", () => {
+    expect(nextExpiringYear(new Date("2026-10-12T10:00:00Z"))).toBe(2025);
+    expect(nextExpiringYear(new Date("2026-06-30T12:00:00Z"))).toBe(2024);
+    // 1 iulie 00:30 în România este încă 30 iunie în UTC.
+    expect(nextExpiringYear(new Date("2026-06-30T21:30:00Z"))).toBe(2025);
+  });
+});
+
+describe("projectExpiringDays", () => {
+  const user = {
+    initialLeaveDays: 0,
+    hireDate: new Date("2020-01-01T00:00:00Z"),
+    createdAt: new Date("2020-01-01T00:00:00Z"),
+  };
+  const entitlements = userEntitlements(user, [...accrue(2025), ...accrue(2026, 9)]);
+
+  it("zilele rămase din anul care expiră, peste cele câștigate în anii următori", () => {
+    // 21 din 2025 + 15,75 din 2026, din care a luat 15: rămân 6 din 2025.
+    expect(
+      projectExpiringDays({
+        year: 2025,
+        availableDays: 21.75,
+        entitlements,
+        alreadyExpired: [],
+        pendingLeaves: [],
+        approvedLeaves: [],
+      })
+    ).toBe(6);
+  });
+
+  it("concediul planificat înainte de termen micșorează zilele care expiră", () => {
+    expect(
+      projectExpiringDays({
+        year: 2025,
+        availableDays: 21.75 - 4,
+        entitlements,
+        alreadyExpired: [],
+        pendingLeaves: [leave("2027-06-28", 1)],
+        approvedLeaves: [leave("2027-03-01", 4)],
+      })
+    ).toBe(1);
+  });
+
+  it("concediul care începe după termen nu salvează zilele", () => {
+    expect(
+      projectExpiringDays({
+        year: 2025,
+        availableDays: 21.75 - 5,
+        entitlements,
+        alreadyExpired: [],
+        pendingLeaves: [leave("2027-07-01", 2)],
+        approvedLeaves: [leave("2027-07-05", 5)],
+      })
+    ).toBe(6);
+  });
+
+  it("0 când soldul nu depășește zilele din anii următori", () => {
+    expect(
+      projectExpiringDays({
+        year: 2025,
+        availableDays: 10,
+        entitlements,
+        alreadyExpired: [],
+        pendingLeaves: [],
+        approvedLeaves: [],
+      })
+    ).toBe(0);
   });
 });

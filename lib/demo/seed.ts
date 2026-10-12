@@ -32,7 +32,7 @@ type Person = {
 };
 
 const PEOPLE: Person[] = [
-  { username: DEMO_EMPLOYEE_USERNAME, firstName: "Ana", lastName: "Ionescu", jobTitle: "Farmacist", workPoint: 0, initialLeaveDays: 8, hiredMonthsAgo: 30 },
+  { username: DEMO_EMPLOYEE_USERNAME, firstName: "Ana", lastName: "Ionescu", jobTitle: "Farmacist", workPoint: 0, initialLeaveDays: 16, hiredMonthsAgo: 30 },
   { username: "mihai.popa", firstName: "Mihai", lastName: "Popa", jobTitle: "Farmacist șef", workPoint: 0, initialLeaveDays: 12, hiredMonthsAgo: 60 },
   { username: "ioana.stan", firstName: "Ioana", lastName: "Stan", jobTitle: "Asistent farmacie", workPoint: 0, initialLeaveDays: 4, hiredMonthsAgo: 18 },
   { username: "andrei.dumitru", firstName: "Andrei", lastName: "Dumitru", jobTitle: "Asistent farmacie", workPoint: 0, initialLeaveDays: 2, hiredMonthsAgo: 9 },
@@ -141,6 +141,10 @@ export async function seedDemo(prisma: DemoClient, now: Date = new Date()) {
           availableDays: person.initialLeaveDays,
           mustChangePassword: false,
           active: true,
+          // Soldul inițial reprezintă zilele reportate din anul trecut: contul pare creat
+          // atunci, ca aceste zile să aparțină anului trecut (openingBalanceYear) și
+          // avertizarea despre zilele care expiră să aibă ce arăta.
+          createdAt: new Date(Date.UTC(today.getUTCFullYear() - 1, 0, 15, 9)),
         },
       })
     );

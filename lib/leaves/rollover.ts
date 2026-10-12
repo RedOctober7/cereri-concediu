@@ -256,3 +256,28 @@ export function planRollover(input: RolloverInput): RolloverStep[] {
 
   return steps;
 }
+
+/** Anul ale cărui zile expiră la următorul termen (30 iunie al anului `an + 2`). */
+export function nextExpiringYear(now: Date): number {
+  return latestExpiredYear(now) + 1;
+}
+
+export type ExpiryProjectionInput = Omit<RolloverInput, "latestExpired"> & {
+  /** Anul pentru care facem proiecția, de obicei nextExpiringYear(acum). */
+  year: number;
+};
+
+/**
+ * Câte zile din `year` ar expira la termenul lui dacă angajatul nu mai depune cereri
+ * până atunci. Este exact calculul pe care îl va face cronul (planRollover), rulat în
+ * avans: anii mai vechi încă neprocesați se scad întâi (FIFO), concediul aprobat sau în
+ * așteptare care începe înainte de termen contează ca efectuat, iar acumulările viitoare
+ * aparțin anilor mai noi și nu schimbă rezultatul.
+ * `pendingLeaves` și `approvedLeaves` pot conține toate cererile angajatului: filtrarea
+ * după termen se face aici.
+ */
+export function projectExpiringDays(input: ExpiryProjectionInput): number {
+  const { year, ...rest } = input;
+  const steps = planRollover({ ...rest, latestExpired: year });
+  return steps.find((step) => step.expiredYear === year)?.expiredDays ?? 0;
+}
