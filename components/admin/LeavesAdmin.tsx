@@ -25,6 +25,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { formatDays } from "@/components/admin/format";
 import {
   Table,
   TableBody,
@@ -69,6 +71,8 @@ export type AdminLeaveRow = {
   workPointName: string | null;
   period: string;
   workingDays: number;
+  /** Soldul curent al angajatului (zilele cererilor în așteptare nu sunt scăzute). */
+  employeeAvailableDays: number;
   status: LeaveStatus;
   violationReasons: string[];
   rejectionReason: string | null;
@@ -220,6 +224,9 @@ export function LeavesAdmin({
 
   const [detailsRow, setDetailsRow] = useState<AdminLeaveRow | null>(null);
   const [approveRow, setApproveRow] = useState<AdminLeaveRow | null>(null);
+  const approveBalanceAfter = approveRow
+    ? Math.round((approveRow.employeeAvailableDays - approveRow.workingDays) * 100) / 100
+    : 0;
   const [rejectRow, setRejectRow] = useState<AdminLeaveRow | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectTouched, setRejectTouched] = useState(false);
@@ -300,17 +307,19 @@ export function LeavesAdmin({
     setApproveRow(row);
   }
 
-  async function decide(row: AdminLeaveRow, action: "approve" | "reject") {
+  async function decide(
+    row: AdminLeaveRow,
+    action: "approve" | "reject",
+    allowNegativeBalance = false
+  ) {
     setSubmitting(true);
     try {
       const res = await fetch(`/api/admin/leaves/${row.id}/${action}`, {
         method: "POST",
-        ...(action === "reject"
-          ? {
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ rejectionReason: trimmedReason }),
-            }
-          : {}),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          action === "reject" ? { rejectionReason: trimmedReason } : { allowNegativeBalance }
+        ),
       });
       const data = (await res.json().catch(() => ({}))) as ApiResult;
 
@@ -739,11 +748,31 @@ export function LeavesAdmin({
                   angajatul primește pe email confirmarea, cu cererea în PDF.
                 </AlertDialogDescription>
               </AlertDialogHeader>
+              <p className="text-sm">
+                Sold actual: <strong>{formatDays(approveRow.employeeAvailableDays)}</strong> ·
+                după aprobare:{" "}
+                <strong className={cn(approveBalanceAfter < 0 && "text-destructive")}>
+                  {formatDays(approveBalanceAfter)}
+                </strong>
+              </p>
+              {approveBalanceAfter < 0 ? (
+                <Alert variant="destructive">
+                  <TriangleAlert aria-hidden="true" />
+                  <AlertDescription>
+                    Soldul angajatului devine negativ. Aprobă doar dacă firma acordă concediu în
+                    avans; altfel respinge cererea sau ajustează soldul din fișa angajatului.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={submitting}>Renunță</AlertDialogCancel>
-                <Button disabled={submitting} onClick={() => void decide(approveRow, "approve")}>
+                <Button
+                  variant={approveBalanceAfter < 0 ? "destructive" : "default"}
+                  disabled={submitting}
+                  onClick={() => void decide(approveRow, "approve", approveBalanceAfter < 0)}
+                >
                   {submitting ? <Loader2 className="animate-spin" /> : <Check />}
-                  {submitting ? "Se aprobă..." : "Aprobă"}
+                  {submitting ? "Se aprobă..." : approveBalanceAfter < 0 ? "Aprobă oricum" : "Aprobă"}
                 </Button>
               </AlertDialogFooter>
             </>

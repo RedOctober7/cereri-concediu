@@ -222,9 +222,19 @@ export async function validateLeaveRequest(
     return blocked(OVERLAPPING_LEAVE_MESSAGE, workingDays);
   }
 
-  if (workingDays > user.availableDays) {
+  // Zilele cererilor în așteptare nu sunt încă scăzute din sold, dar sunt deja cerute:
+  // altfel două cereri care împreună depășesc soldul ar trece fiecare de verificare.
+  const pending = await prisma.leaveRequest.aggregate({
+    where: { userId, status: LeaveStatus.PENDING_ADMIN },
+    _sum: { workingDays: true },
+  });
+  const pendingDays = pending._sum.workingDays ?? 0;
+  const freeDays = Math.round((user.availableDays - pendingDays) * 100) / 100;
+  if (workingDays > freeDays) {
     violations.push(
-      `Cererea depășește zilele disponibile (${user.availableDays} disponibile, ${workingDays} solicitate)`
+      pendingDays > 0
+        ? `Cererea depășește zilele disponibile (${daysFormatter.format(freeDays)} disponibile după cererile în așteptare, ${workingDays} solicitate)`
+        : `Cererea depășește zilele disponibile (${daysFormatter.format(freeDays)} disponibile, ${workingDays} solicitate)`
     );
   }
 

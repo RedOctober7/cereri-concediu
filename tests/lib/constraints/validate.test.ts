@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
   user: { findUnique: vi.fn(), count: vi.fn() },
-  leaveRequest: { findFirst: vi.fn(), count: vi.fn(), findMany: vi.fn() },
+  leaveRequest: { findFirst: vi.fn(), count: vi.fn(), findMany: vi.fn(), aggregate: vi.fn() },
   constraint: { findMany: vi.fn() },
 }));
 
@@ -42,6 +42,7 @@ describe("validateLeaveRequest", () => {
     db.leaveRequest.findFirst.mockResolvedValue(null);
     db.leaveRequest.count.mockResolvedValue(0);
     db.leaveRequest.findMany.mockResolvedValue([]);
+    db.leaveRequest.aggregate.mockResolvedValue({ _sum: { workingDays: null } });
     db.constraint.findMany.mockResolvedValue([]);
   });
 
@@ -128,6 +129,25 @@ describe("validateLeaveRequest", () => {
       expect(result.violations).toEqual([
         "Cererea depășește zilele disponibile (3 disponibile, 5 solicitate)",
       ]);
+    });
+
+    it("zilele cerute în cereri încă în așteptare se scad din sold", async () => {
+      db.user.findUnique.mockResolvedValue(activeUser({ availableDays: 10 }));
+      db.leaveRequest.aggregate.mockResolvedValue({ _sum: { workingDays: 8 } });
+      const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
+      expect(result.violations).toEqual([
+        "Cererea depășește zilele disponibile (2 disponibile după cererile în așteptare, 5 solicitate)",
+      ]);
+      expect(db.leaveRequest.aggregate).toHaveBeenCalledWith({
+        where: { userId: USER_ID, status: LeaveStatus.PENDING_ADMIN },
+        _sum: { workingDays: true },
+      });
+    });
+
+    it("cererile în așteptare care încap în sold nu produc încălcări", async () => {
+      db.leaveRequest.aggregate.mockResolvedValue({ _sum: { workingDays: 15 } });
+      const result = await validateLeaveRequest(USER_ID, day("2026-10-19"), day("2026-10-23"));
+      expect(result.violations).toEqual([]);
     });
 
     it("regulile active ale angajatului", async () => {
