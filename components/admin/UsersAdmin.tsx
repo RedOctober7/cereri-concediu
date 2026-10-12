@@ -154,14 +154,17 @@ export function UsersAdmin({
     setFilters({ q: "", status: "toti", workPoint: "" });
   }
 
-  function onCreated(user: CreatedUser, warning?: string) {
-    setCreateOpen(false);
+  /**
+   * `emailFailed`: emailul de bun venit nu a plecat, deci dialogul rămâne deschis și
+   * arată datele de autentificare, pe care adminul trebuie să le comunice.
+   */
+  function onCreated(user: CreatedUser, emailFailed: boolean) {
+    if (!emailFailed) {
+      setCreateOpen(false);
+    }
     toast.success(`Contul pentru ${user.firstName} ${user.lastName} a fost creat.`, {
       action: { label: "Deschide", onClick: () => router.push(userHref(user.id)) },
     });
-    if (warning) {
-      toast.warning(warning, { duration: 10000 });
-    }
     router.refresh();
   }
 
