@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -22,9 +22,10 @@ import {
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
+  /** Butonul demo apăsat, pentru indicatorul de încărcare. */
+  const [demoPending, setDemoPending] = useState<string | null>(null);
 
   const {
     register,
@@ -41,6 +42,7 @@ export function LoginForm() {
 
   async function login(username: string, password: string) {
     setIsLoading(true);
+    let navigating = false;
 
     try {
       const result = await signIn("credentials", {
@@ -63,33 +65,39 @@ export function LoginForm() {
         user?: { role?: string; mustChangePassword?: boolean };
       };
 
-      if (session.user?.mustChangePassword) {
-        router.push("/schimba-parola");
-        router.refresh();
-        return;
-      }
-
       // Doar căi de pe același site: altfel ?callbackUrl=https://evil.com ar trimite
       // utilizatorul, imediat după autentificare, pe alt site (open redirect).
       const callbackPath = safeCallbackPath(
         searchParams.get("callbackUrl"),
         window.location.origin
       );
-      if (callbackPath) {
-        router.push(callbackPath);
-      } else if (session.user?.role === "ADMIN") {
-        router.push("/admin");
-      } else {
-        router.push("/dashboard");
-      }
-      router.refresh();
+
+      // Navigare completă, nu router.push + router.refresh: cele două concurau (refresh
+      // reîncărca /login și anula uneori navigarea), deci butonul trebuia apăsat de două
+      // ori. Butoanele rămân dezactivate până se încarcă pagina nouă.
+      navigating = true;
+      const target = session.user?.mustChangePassword
+        ? "/schimba-parola"
+        : (callbackPath ?? (session.user?.role === "ADMIN" ? "/admin" : "/dashboard"));
+      // Intenționat o navigare completă: cookie-ul de sesiune tocmai a fost setat, iar
+      // cache-ul routerului client poate avea încă redirect-ul spre /login.
+      window.location.assign(target);
     } catch {
+      navigating = false;
       toast.error(
         "A apărut o eroare. Reîncearcă în câteva momente sau contactează un administrator."
       );
     } finally {
-      setIsLoading(false);
+      if (!navigating) {
+        setIsLoading(false);
+        setDemoPending(null);
+      }
     }
+  }
+
+  function demoLogin(username: string) {
+    setDemoPending(username);
+    void login(username, DEMO_PASSWORD);
   }
 
   return (
@@ -107,8 +115,9 @@ export function LoginForm() {
               type="button"
               className="h-10"
               disabled={isLoading}
-              onClick={() => void login(DEMO_ADMIN_USERNAME, DEMO_PASSWORD)}
+              onClick={() => demoLogin(DEMO_ADMIN_USERNAME)}
             >
+              {demoPending === DEMO_ADMIN_USERNAME ? <Loader2 className="animate-spin" /> : null}
               Intră ca administrator
             </Button>
             <Button
@@ -116,8 +125,9 @@ export function LoginForm() {
               variant="outline"
               className="h-10"
               disabled={isLoading}
-              onClick={() => void login(DEMO_EMPLOYEE_USERNAME, DEMO_PASSWORD)}
+              onClick={() => demoLogin(DEMO_EMPLOYEE_USERNAME)}
             >
+              {demoPending === DEMO_EMPLOYEE_USERNAME ? <Loader2 className="animate-spin" /> : null}
               Intră ca angajat
             </Button>
           </div>
