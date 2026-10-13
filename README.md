@@ -6,6 +6,8 @@ Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai mult
 
 > **In English:** a leave-management web app for a Romanian company with several locations. Employees request leave online, every request goes to an admin for approval with rule warnings attached, leave balances accrue monthly and expire per the Romanian Labour Code, and every approved request gets a signable PDF. Built with Next.js 16, TypeScript, Prisma/PostgreSQL and NextAuth, with ~300 unit tests run in two time zones and CI.
 
+**[Încearcă demo-ul →](https://cereri-concediu.vercel.app)** · intri cu un click, ca administrator sau ca angajat, pe date fictive.
+
 ![Panoul administratorului](docs/screenshots/admin-panou.png)
 
 ## Ce poate face
@@ -131,3 +133,5 @@ CI-ul (`.github/workflows/ci.yml`) rulează la fiecare push lint-ul, verificarea
 ## Autor
 
 **Astefanei Razvan** · [LinkedIn](https://www.linkedin.com/in/razvan-astefanei-5b64ba32b/) · [GitHub](https://github.com/RedOctober7)
+
+Dezvoltat cu Claude Code ca asistent de programare. Deciziile de produs, regulile de business și testarea îmi aparțin.
