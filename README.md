@@ -30,6 +30,7 @@ Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai mult
 - Acumulare lunară de zile (cron Vercel).
 - Expirarea zilelor neefectuate după 18 luni (art. 146 alin. 2), pe principiul primul intrat, primul ieșit (FIFO), cu recuperarea anilor ratați.
 - Emailuri pentru cereri noi (către administratori), aprobări și respingeri.
+- Pe instanța demo, datele se refac în fiecare noapte: ce schimbă vizitatorii dispare, iar perioadele sunt din nou relative la ziua de azi.
 
 | | |
 |---|---|
@@ -123,11 +124,11 @@ Pe Vercel, cu PostgreSQL pe Supabase:
 
 1. Setează în Vercel variabilele din `.env.example`. Obligatorii: `DATABASE_URL` (pooler, port 6543, `?pgbouncer=true`), `DIRECT_URL` (port 5432), `NEXTAUTH_SECRET`, `NEXTAUTH_URL` și `CRON_SECRET` (minim 16 caractere). Opționale: `RESEND_API_KEY` și `EMAIL_FROM` pentru emailuri, Supabase Storage pentru arhivarea PDF-urilor, Upstash Redis pentru rate limiting comun.
 2. Rulează migrările pe baza de producție: `npx prisma migrate deploy`.
-3. Cron-urile din `vercel.json` rulează acumularea lunară (pe 1 ale lunii) și expirarea anuală (pe 1 iulie).
+3. Cron-urile din `vercel.json` rulează acumularea lunară (pe 1 ale lunii), expirarea anuală (pe 1 iulie) și, doar pe instanța demo, refacerea datelor demo (în fiecare noapte, la 01:00 UTC).
 
 Fără Vercel (de exemplu pe un PC din firmă, cu `npm run build` și `npm start`), cron-urile din `vercel.json` nu rulează singure. Programează din Windows Task Scheduler (sau cron) câte o cerere `GET` cu antetul `Authorization: Bearer <CRON_SECRET>` către `/api/cron/monthly-accrual` pe 1 ale lunii și către `/api/cron/yearly-rollover` pe 1 iulie. Ambele sunt idempotente, deci o rulare repetată nu adaugă și nu scade zile de două ori.
 
-O instanță demo publică are nevoie de un proiect Vercel separat, cu propria bază de date, `DEMO_MODE=true` și `NEXT_PUBLIC_DEMO_MODE=true`.
+O instanță demo publică are nevoie de un proiect Vercel separat, cu propria bază de date, `DEMO_MODE=true` și `NEXT_PUBLIC_DEMO_MODE=true`. Acolo, `/api/cron/demo-reset` șterge baza în fiecare noapte și pune la loc datele fictive (ca `npm run db:seed-demo`). Pe o instanță fără `DEMO_MODE=true` același cron nu atinge nimic.
 
 CI-ul (`.github/workflows/ci.yml`) rulează la fiecare push lint-ul, verificarea de tipuri, testele în ambele fusuri orare și build-ul. Separat, aplică migrările pe un Postgres 16 și verifică dacă schema s-a îndepărtat de migrări.
 
