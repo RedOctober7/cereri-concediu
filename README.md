@@ -14,14 +14,14 @@ Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai mult
 
 **Angajatul**
 - Depune o cerere dintr-un calendar care marchează weekendurile, sărbătorile legale și colegii de la același punct de lucru aflați în concediu.
-- Vede înainte de trimitere câte zile lucrătoare are cererea, soldul rămas și ce reguli încalcă, dacă încalcă vreuna.
+- Vede înainte de trimitere câte zile lucrătoare are cererea, soldul rămas, ce reguli încalcă, dacă încalcă vreuna, și care colegi de la același punct de lucru au deja concediu aprobat în acele zile.
 - Își urmărește cererile, le poate anula pe cele în așteptare și concediile aprobate care nu au început (zilele revin în sold), și descarcă PDF-ul cererilor aprobate.
 - E avertizat pe panou dacă are zile neplanificate care expiră la următorul termen (30 iunie) și până când trebuie să le ia.
 - Își resetează singur parola prin email.
 
 **Administratorul**
 - Panou cu ce cere atenție: cereri în așteptare, cine e în concediu azi, plecări în următoarele 14 zile, angajați cu sold mic și angajații cu zile care urmează să expire.
-- Aprobă sau respinge cereri, cu motiv, filtrate după status, punct de lucru și angajat. Vede soldul angajatului înainte și după aprobare și trebuie să confirme explicit o aprobare care l-ar face negativ. Poate anula un concediu aprobat care nu a început.
+- Aprobă sau respinge cereri, cu motiv, filtrate după status, punct de lucru și angajat. Vede soldul angajatului înainte și după aprobare și trebuie să confirme explicit o aprobare care l-ar face negativ. La fiecare cerere în așteptare vede câți colegi de la același punct de lucru lipsesc în acea perioadă, cu numele și zilele lor. Poate anula un concediu aprobat care nu a început.
 - Gestionează angajații: date, sold inițial, ajustări de sold cu motiv, resetare de parolă, dezactivare.
 - Configurează reguli fără cod: preaviz minim, lună restricționată (ex. inventar), concediu neîntrerupt anual de minim 10 zile (art. 148).
 - Exportă situația zilelor în Excel și vede jurnalul complet al acțiunilor.
@@ -44,6 +44,7 @@ Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai mult
 - **Zilele calendaristice sunt `Date` la miezul nopții UTC** (`lib/dates.ts`), exact ce scrie Prisma într-o coloană `@db.Date`. Browserul trimite `yyyy-MM-dd`, iar „azi” se calculează în ora României. Așa rezultatele sunt aceleași pe serverul Vercel (UTC) și pe un laptop din București; testele rulează în ambele fusuri orare.
 - **Sărbătorile legale din România se calculează, nu se scriu de mână**: Paștele ortodox (algoritmul Gauss), Rusaliile, plus 6–7 ianuarie începând cu 2024 (Legea 37/2024).
 - **Nicio cerere nu se aprobă automat, iar regulile nu resping, ci atenționează**: o cerere care încalcă o regulă (sau depășește soldul, socotind și cererile încă în așteptare) ajunge la administrator cu motivul explicit. Doar suprapunerea cu o cerere proprie, o dată în trecut sau lipsa zilelor lucrătoare blochează trimiterea. Previzualizarea și crearea folosesc aceeași funcție de validare.
+- **Colegii absenți se numără pe oameni, nu pe cereri, și nu blochează nimic** (`lib/leaves/colleague-absences.ts`): un coleg cu două concedii în aceeași perioadă apare o singură dată. Lista se calculează la afișare, nu se salvează la depunere, deci o aprobare sau o anulare de mai târziu se vede imediat. Angajatul vede doar concediile aprobate ale colegilor (ca în calendar); adminul vede și cererile lor încă în așteptare.
 - **Avertizarea despre zilele care expiră folosește exact calculul expirării** (`planRollover`), rulat în avans: angajatul vede ce se va întâmpla efectiv pe 1 iulie, nu o estimare. Jurisprudența CJUE (C-619/16, C-684/16) cere ca angajatul să fie informat din timp înainte ca zilele să se piardă.
 - **Operațiile pe sold sunt atomice**: crearea, aprobarea, anularea și ajustarea blochează rândul angajatului (`SELECT … FOR UPDATE`), iar tranzițiile de status sunt condiționate de statusul curent, ca un dublu click să nu scadă zilele de două ori. Cron-urile sunt idempotente.
 - **Securitate**:

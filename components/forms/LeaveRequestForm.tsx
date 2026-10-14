@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { ro } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Users } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { formatDays } from "@/components/admin/format";
@@ -20,11 +20,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import type { ColleagueAbsenceView } from "@/lib/leaves/colleague-absences";
 
 type ValidationPreview = {
   violations: string[];
   workingDays: number;
   availableDays: number;
+  /** Colegii de la același punct de lucru cu concediu aprobat în perioada aleasă. */
+  colleagueAbsences: ColleagueAbsenceView[];
 };
 
 type PreviewError = {
@@ -252,6 +255,25 @@ export function LeaveRequestForm({
                     </AlertDescription>
                   </Alert>
                 )}
+                {preview.colleagueAbsences.length > 0 ? (
+                  <Alert>
+                    <Users className="size-4" />
+                    <AlertTitle>Colegi în concediu în această perioadă</AlertTitle>
+                    <AlertDescription>
+                      <ul className="mt-2 list-disc space-y-1 pl-4">
+                        {preview.colleagueAbsences.map((colleague, index) => (
+                          <li key={index}>
+                            {colleague.name}:{" "}
+                            {colleague.periods.map((period) => period.label).join(", ")}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-2">
+                        Poți trimite cererea; administratorul vede și el cine mai lipsește.
+                      </p>
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
               </>
             ) : null}
           </CardContent>
