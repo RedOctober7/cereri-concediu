@@ -3,6 +3,8 @@ import { requireSession } from "@/lib/api-session";
 import { leaveValidateQuerySchema } from "@/lib/validators";
 import { validateLeaveRequest } from "@/lib/constraints/validate";
 import { prisma } from "@/lib/db";
+import { findColleagueAbsences, toAbsenceViews } from "@/lib/leaves/colleague-absences";
+import { formatPeriod } from "@/components/admin/format";
 
 export async function GET(request: Request) {
   try {
@@ -37,13 +39,26 @@ export async function GET(request: Request) {
 
     const user = await prisma.user.findUnique({
       where: { id: auth.session.user.id },
-      select: { availableDays: true },
+      select: { availableDays: true, workPointId: true },
     });
+
+    // Doar concediile aprobate: angajatul vede în calendar tot atât despre colegi.
+    const colleagueAbsences = await findColleagueAbsences(
+      {
+        userId: auth.session.user.id,
+        workPointId: user?.workPointId ?? null,
+        start: parsed.data.startDate,
+        end: parsed.data.endDate,
+      },
+      { includePending: false }
+    );
 
     return NextResponse.json({
       data: {
         ...validation,
         availableDays: user?.availableDays ?? 0,
+        // „Nume Prenume”, ca în calendarul de lângă previzualizare.
+        colleagueAbsences: toAbsenceViews(colleagueAbsences, formatPeriod, "lastFirst"),
       },
     });
   } catch (error) {

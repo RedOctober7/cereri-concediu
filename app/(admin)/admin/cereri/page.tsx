@@ -8,6 +8,11 @@ import { isApprovedStatus } from "@/lib/leaves/status";
 import { calculateWorkingDays } from "@/lib/holidays";
 import { prisma } from "@/lib/db";
 import {
+  findColleagueLeaves,
+  groupColleagueAbsences,
+  toAbsenceViews,
+} from "@/lib/leaves/colleague-absences";
+import {
   LeavesAdmin,
   type AdminLeaveRow,
   type StatusTab,
@@ -90,6 +95,7 @@ export default async function AdminCereriPage({
     take: PAGE_SIZE,
     select: {
       id: true,
+      userId: true,
       startDate: true,
       endDate: true,
       workingDays: true,
@@ -108,6 +114,7 @@ export default async function AdminCereriPage({
           active: true,
           deletedAt: true,
           availableDays: true,
+          workPointId: true,
           workPoint: { select: { name: true } },
         },
       },
@@ -127,6 +134,26 @@ export default async function AdminCereriPage({
   const approverName = new Map(
     approvers.map((user) => [user.id, `${user.firstName} ${user.lastName}`])
   );
+
+  // Colegii care lipsesc în perioada cererilor în așteptare: o singură interogare pentru
+  // toată pagina, apoi fiecare cerere își alege colegii (același punct de lucru, aceeași
+  // perioadă). Adminul vede și cererile colegilor încă neaprobate.
+  const pending = leaves.filter((leave) => leave.status === "PENDING_ADMIN");
+  const colleagueLeaves =
+    pending.length > 0
+      ? await findColleagueLeaves({
+          workPointIds: [
+            ...new Set(
+              pending
+                .map((leave) => leave.user.workPointId)
+                .filter((id): id is string => !!id)
+            ),
+          ],
+          start: new Date(Math.min(...pending.map((leave) => leave.startDate.getTime()))),
+          end: new Date(Math.max(...pending.map((leave) => leave.endDate.getTime()))),
+          includePending: true,
+        })
+      : [];
 
   const today = todayInBucharest();
   const rows: AdminLeaveRow[] = leaves.map((leave) => ({
@@ -152,6 +179,21 @@ export default async function AdminCereriPage({
     createdTime: formatInTimeZone(leave.createdAt, APP_TIME_ZONE, "HH:mm"),
     approvedAt: leave.approvedAt ? formatTimestamp(leave.approvedAt) : null,
     approvedBy: leave.approvedById ? (approverName.get(leave.approvedById) ?? null) : null,
+    colleagueAbsences:
+      leave.status === "PENDING_ADMIN"
+        ? toAbsenceViews(
+            groupColleagueAbsences(
+              {
+                userId: leave.userId,
+                workPointId: leave.user.workPointId,
+                start: leave.startDate,
+                end: leave.endDate,
+              },
+              colleagueLeaves
+            ),
+            formatPeriod
+          )
+        : [],
   }));
 
   const tabs: StatusTab[] = STATUS_FILTERS.map((filter) => ({

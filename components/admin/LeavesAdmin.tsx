@@ -14,10 +14,12 @@ import {
   Loader2,
   Search,
   TriangleAlert,
+  Users,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { leaveStatusClassName, leaveStatusLabel } from "@/lib/leaves/status";
+import type { ColleagueAbsenceView } from "@/lib/leaves/colleague-absences";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -83,6 +85,11 @@ export type AdminLeaveRow = {
   createdTime: string;
   approvedAt: string | null;
   approvedBy: string | null;
+  /**
+   * La cererile în așteptare: colegii de la același punct de lucru care lipsesc în
+   * perioada cererii (concediu aprobat sau cerere în așteptare). Gol la celelalte.
+   */
+  colleagueAbsences: ColleagueAbsenceView[];
 };
 
 export type StatusTab = {
@@ -128,6 +135,30 @@ function ViolationHint({ count }: { count: number }) {
     <span className="flex items-center gap-1 text-xs text-muted-foreground">
       <TriangleAlert aria-hidden="true" className="size-3.5 shrink-0" />
       {count === 1 ? "Încalcă o regulă" : `Încalcă ${count} reguli`}
+    </span>
+  );
+}
+
+function colleaguesLabel(count: number): string {
+  if (count === 1) return "1 coleg lipsește";
+  const lastTwo = count % 100;
+  return `${count} ${lastTwo === 0 || lastTwo >= 20 ? "de " : ""}colegi lipsesc`;
+}
+
+/** „Ioana Stan (14–16 oct 2026)”, „Mihai Pop (15 oct 2026, în așteptare)”. */
+function colleagueAbsenceText(colleague: ColleagueAbsenceView): string {
+  const periods = colleague.periods
+    .map((period) => (period.pending ? `${period.label}, în așteptare` : period.label))
+    .join("; ");
+  return `${colleague.name} (${periods})`;
+}
+
+function ColleagueHint({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <Users aria-hidden="true" className="size-3.5 shrink-0" />
+      {colleaguesLabel(count)}
     </span>
   );
 }
@@ -590,7 +621,10 @@ export function LeavesAdmin({
                           <div className="flex flex-col items-start gap-1">
                             <StatusBadge status={row.status} />
                             {row.status === "PENDING_ADMIN" ? (
-                              <ViolationHint count={row.violationReasons.length} />
+                              <>
+                                <ViolationHint count={row.violationReasons.length} />
+                                <ColleagueHint count={row.colleagueAbsences.length} />
+                              </>
                             ) : null}
                           </div>
                         </TableCell>
@@ -632,7 +666,10 @@ export function LeavesAdmin({
                         Depusă {row.createdDate}, {row.createdTime}
                       </span>
                       {row.status === "PENDING_ADMIN" ? (
-                        <ViolationHint count={row.violationReasons.length} />
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <ViolationHint count={row.violationReasons.length} />
+                          <ColleagueHint count={row.colleagueAbsences.length} />
+                        </div>
                       ) : null}
                     </div>
                     <div className="flex gap-2">{rowActions(row, "default")}</div>
@@ -691,7 +728,10 @@ export function LeavesAdmin({
 
       {/* Detalii cerere */}
       <Dialog open={detailsRow !== null} onOpenChange={(open) => !open && setDetailsRow(null)}>
-        <DialogContent showCloseButton={false} className="sm:max-w-md">
+        <DialogContent
+          showCloseButton={false}
+          className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md"
+        >
           {detailsRow ? (
             <>
               <DialogHeader>
@@ -736,6 +776,19 @@ export function LeavesAdmin({
                   <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                     {detailsRow.violationReasons.map((reason, index) => (
                       <li key={index}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {detailsRow.colleagueAbsences.length > 0 ? (
+                <div className="space-y-1.5 rounded-lg border bg-muted/40 p-3">
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <Users aria-hidden="true" className="size-4 text-muted-foreground" />
+                    Colegi de la același punct de lucru care lipsesc
+                  </p>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                    {detailsRow.colleagueAbsences.map((colleague, index) => (
+                      <li key={index}>{colleagueAbsenceText(colleague)}</li>
                     ))}
                   </ul>
                 </div>
@@ -816,7 +869,7 @@ export function LeavesAdmin({
         open={approveRow !== null}
         onOpenChange={(open) => !open && !submitting && setApproveRow(null)}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
           {approveRow ? (
             <>
               <AlertDialogHeader>
@@ -834,6 +887,16 @@ export function LeavesAdmin({
                   {formatDays(approveBalanceAfter)}
                 </strong>
               </p>
+              {approveRow.colleagueAbsences.length > 0 ? (
+                <p className="flex gap-1.5 text-sm text-muted-foreground">
+                  <Users aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                  <span>
+                    În aceeași perioadă{" "}
+                    {approveRow.colleagueAbsences.length === 1 ? "lipsește" : "lipsesc"} și:{" "}
+                    {approveRow.colleagueAbsences.map(colleagueAbsenceText).join(", ")}.
+                  </span>
+                </p>
+              ) : null}
               {approveNegative ? (
                 <Alert variant="destructive">
                   <TriangleAlert aria-hidden="true" />
