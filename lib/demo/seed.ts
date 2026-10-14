@@ -4,10 +4,12 @@ import {
   ConstraintType,
   LeaveStatus,
   Role,
+  type Prisma,
   type PrismaClient,
 } from "@prisma/client";
 import { addDaysUTC, todayInBucharest, utcDate } from "@/lib/dates";
 import { calculateWorkingDays } from "@/lib/holidays";
+import { nextExpiringYear } from "@/lib/leaves/rollover";
 
 /**
  * Date demo fictive pentru o instanță publică (portofoliu). Toate datele sunt relative
@@ -76,32 +78,60 @@ function monthsAgo(today: Date, months: number): Date {
   return utcDate(today.getUTCFullYear(), today.getUTCMonth() - months, 1);
 }
 
-type DemoClient = Pick<
-  PrismaClient,
-  "$transaction" | "auditLog" | "passwordReset" | "leaveAccrual" | "leaveRequest" | "constraint" | "user" | "workPoint"
->;
+/**
+ * Momentul la care par create conturile demo: 15 ianuarie din anul ale cărui zile expiră
+ * următoarele (anul trecut din iulie până în decembrie, acum doi ani din ianuarie până în
+ * iunie). Soldul inițial aparține acelui an (openingBalanceYear), deci avertizarea despre
+ * zilele care expiră are ce arăta în orice lună în care se refac datele.
+ */
+export function demoAccountsCreatedAt(now: Date): Date {
+  return new Date(Date.UTC(nextExpiringYear(now), 0, 15, 9));
+}
 
-export async function seedDemo(prisma: DemoClient, now: Date = new Date()) {
+// Cheia lock-ului Postgres care împiedică două refaceri simultane (ex. un cron livrat de
+// două ori): a doua așteaptă să se termine prima.
+const DEMO_RESET_LOCK = 727001;
+
+type DemoClient = Pick<PrismaClient, "$transaction">;
+
+/**
+ * Șterge tot și pune la loc datele demo, într-o singură tranzacție: dacă ceva eșuează
+ * pe parcurs, baza rămâne cu datele de dinainte, nu goală sau pe jumătate refăcută.
+ */
+export async function seedDemo(client: DemoClient, now: Date = new Date()) {
   const today = todayInBucharest(now);
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
 
-  await prisma.$transaction([
-    prisma.auditLog.deleteMany(),
-    prisma.passwordReset.deleteMany(),
-    prisma.leaveAccrual.deleteMany(),
-    prisma.leaveRequest.deleteMany(),
-    prisma.constraint.deleteMany(),
-    prisma.user.deleteMany(),
-    prisma.workPoint.deleteMany(),
-  ]);
-
-  const workPoints = await Promise.all(
-    [
-      { name: "Farmacia Centru", address: "Str. Republicii 12, Brașov" },
-      { name: "Farmacia Tractorul", address: "Bd. 15 Noiembrie 48, Brașov" },
-      { name: "Depozit central", address: "Str. Zizinului 110, Brașov" },
-    ].map((data) => prisma.workPoint.create({ data }))
+  return client.$transaction(
+    async (prisma) => {
+      await prisma.$executeRaw`SELECT pg_advisory_xact_lock(${DEMO_RESET_LOCK}::bigint)`;
+      return writeDemoData(prisma, { now, today, passwordHash });
+    },
+    // Câteva zeci de interogări, una după alta: mult peste cele 5 secunde implicite.
+    { maxWait: 10_000, timeout: 45_000 }
   );
+}
+
+async function writeDemoData(
+  prisma: Prisma.TransactionClient,
+  { now, today, passwordHash }: { now: Date; today: Date; passwordHash: string }
+) {
+  await prisma.auditLog.deleteMany();
+  await prisma.passwordReset.deleteMany();
+  await prisma.leaveAccrual.deleteMany();
+  await prisma.leaveRequest.deleteMany();
+  await prisma.constraint.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.workPoint.deleteMany();
+
+  const workPoints = [];
+  for (const data of [
+    { name: "Farmacia Centru", address: "Str. Republicii 12, Brașov" },
+    { name: "Farmacia Tractorul", address: "Bd. 15 Noiembrie 48, Brașov" },
+    { name: "Depozit central", address: "Str. Zizinului 110, Brașov" },
+  ]) {
+    workPoints.push(await prisma.workPoint.create({ data }));
+  }
 
   const admin = await prisma.user.create({
     data: {
@@ -121,6 +151,7 @@ export async function seedDemo(prisma: DemoClient, now: Date = new Date()) {
     },
   });
 
+  const accountsCreatedAt = demoAccountsCreatedAt(now);
   const users = [];
   for (const person of PEOPLE) {
     const hireDate = monthsAgo(today, person.hiredMonthsAgo);
@@ -141,10 +172,10 @@ export async function seedDemo(prisma: DemoClient, now: Date = new Date()) {
           availableDays: person.initialLeaveDays,
           mustChangePassword: false,
           active: true,
-          // Soldul inițial reprezintă zilele reportate din anul trecut: contul pare creat
-          // atunci, ca aceste zile să aparțină anului trecut (openingBalanceYear) și
-          // avertizarea despre zilele care expiră să aibă ce arăta.
-          createdAt: new Date(Date.UTC(today.getUTCFullYear() - 1, 0, 15, 9)),
+          // Soldul inițial reprezintă zilele reportate dintr-un an anterior: contul pare
+          // creat atunci (demoAccountsCreatedAt), ca avertizarea despre zilele care
+          // expiră să aibă ce arăta.
+          createdAt: accountsCreatedAt,
         },
       })
     );

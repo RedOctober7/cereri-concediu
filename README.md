@@ -128,7 +128,7 @@ Pe Vercel, cu PostgreSQL pe Supabase:
 
 Fără Vercel (de exemplu pe un PC din firmă, cu `npm run build` și `npm start`), cron-urile din `vercel.json` nu rulează singure. Programează din Windows Task Scheduler (sau cron) câte o cerere `GET` cu antetul `Authorization: Bearer <CRON_SECRET>` către `/api/cron/monthly-accrual` pe 1 ale lunii și către `/api/cron/yearly-rollover` pe 1 iulie. Ambele sunt idempotente, deci o rulare repetată nu adaugă și nu scade zile de două ori.
 
-O instanță demo publică are nevoie de un proiect Vercel separat, cu propria bază de date, `DEMO_MODE=true` și `NEXT_PUBLIC_DEMO_MODE=true`. Acolo, `/api/cron/demo-reset` șterge baza în fiecare noapte și pune la loc datele fictive (ca `npm run db:seed-demo`). Pe o instanță fără `DEMO_MODE=true` același cron nu atinge nimic.
+O instanță demo publică are nevoie de un proiect Vercel separat, cu propria bază de date, `DEMO_MODE=true` și `NEXT_PUBLIC_DEMO_MODE=true`. Acolo, `/api/cron/demo-reset` șterge baza în fiecare noapte și pune la loc datele fictive (ca `npm run db:seed-demo`), într-o singură tranzacție: dacă ceva eșuează, rămân datele din ziua precedentă. Pe o instanță fără `DEMO_MODE=true` același cron nu atinge nimic.
 
 CI-ul (`.github/workflows/ci.yml`) rulează la fiecare push lint-ul, verificarea de tipuri, testele în ambele fusuri orare și build-ul. Separat, aplică migrările pe un Postgres 16 și verifică dacă schema s-a îndepărtat de migrări.
 
