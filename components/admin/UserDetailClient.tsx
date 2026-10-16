@@ -99,8 +99,8 @@ export type BalanceAdjustmentRow = {
   delta: number;
   reason: string;
   after: number;
-  /** Anul zilelor (expiră cu acel an). */
-  year: number;
+  /** Anul zilelor (expiră cu acel an); null la o scădere din cele mai vechi zile. */
+  year: number | null;
   createdAt: string;
   actorName: string | null;
 };
@@ -303,7 +303,9 @@ function AdjustmentHistory({
                   )}
                 >
                   {signedDays(adjustment.delta)} {daysUnit(adjustment.delta)}
-                  <span className="font-normal text-muted-foreground"> din {adjustment.year}</span>
+                  <span className="font-normal text-muted-foreground">
+                    {adjustment.year !== null ? ` din ${adjustment.year}` : " din cele mai vechi zile"}
+                  </span>
                 </span>
                 <span className="text-xs text-muted-foreground tabular-nums">
                   {formatTimestamp(new Date(adjustment.createdAt))}

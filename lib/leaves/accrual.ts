@@ -16,7 +16,7 @@ function fromIndex(index: number): AccrualMonth {
   return { year: Math.floor(index / 12), month: (index % 12) + 1 };
 }
 
-/** Luna (ora României) în care a fost creat contul. */
+/** Luna (ora României) a unui moment (crearea contului, reactivarea). */
 function creationMonth(createdAt: Date): AccrualMonth {
   const local = toZonedTime(createdAt, APP_TIME_ZONE);
   return { year: local.getFullYear(), month: local.getMonth() + 1 };
@@ -29,12 +29,15 @@ function creationMonth(createdAt: Date): AccrualMonth {
  * de la prima lună deja acumulată sau, dacă nu are niciuna, de la luna în care a fost
  * creat contul (soldul inițial acoperă lunile de dinainte), până la luna trecută.
  * O lună contează dacă angajatul a fost angajat înainte de 15 ale lunii. Lunile din ani
- * ale căror zile au expirat deja nu se mai adaugă (ar expira imediat).
+ * ale căror zile au expirat deja nu se mai adaugă (ar expira imediat). Un cont reactivat
+ * nu primește lunile în care a fost dezactivat: recuperarea începe cel mai devreme cu
+ * luna ultimei reactivări (`reactivatedAt`), ca înainte, când cronul sărea conturile inactive.
  */
 export function monthsToAccrue({
   hireDate,
   createdAt,
   accrued,
+  reactivatedAt,
   now,
 }: {
   /** `@db.Date`, miezul nopții UTC. */
@@ -42,12 +45,15 @@ export function monthsToAccrue({
   createdAt: Date;
   /** Lunile care au deja rând LeaveAccrual. */
   accrued: AccrualMonth[];
+  /** Ultima reactivare a contului, dacă a fost dezactivat vreodată. */
+  reactivatedAt?: Date | null;
   now: Date;
 }): AccrualMonth[] {
   const today = todayInBucharest(now);
   const lastMonth = monthIndex({ year: today.getUTCFullYear(), month: today.getUTCMonth() + 1 }) - 1;
   const done = new Set(accrued.map(monthIndex));
-  const start = done.size > 0 ? Math.min(...done) : monthIndex(creationMonth(createdAt));
+  const firstMonth = done.size > 0 ? Math.min(...done) : monthIndex(creationMonth(createdAt));
+  const start = reactivatedAt ? Math.max(firstMonth, monthIndex(creationMonth(reactivatedAt))) : firstMonth;
   const oldestYear = nextExpiringYear(now);
 
   const months: AccrualMonth[] = [];

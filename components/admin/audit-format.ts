@@ -290,6 +290,8 @@ export function formatAuditDetails(
       }
       if (isNumber(details.year)) {
         add("Zile din anul", String(details.year), "year");
+      } else if (details.year === null && isNumber(details.delta) && details.delta < 0) {
+        add("Zile din anul", "cele mai vechi (ca un concediu)", "year");
       }
       if (typeof details.reason === "string") {
         add("Motiv", details.reason, "reason");

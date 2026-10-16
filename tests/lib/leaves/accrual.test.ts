@@ -67,4 +67,17 @@ describe("monthsToAccrue", () => {
     // În octombrie 2026 au expirat zilele din 2024 și dinainte: golul din mai 2023 rămâne.
     expect(monthsToAccrue({ ...old, accrued, now: new Date("2026-10-16T10:00:00Z") })).toEqual([]);
   });
+
+  it("un cont reactivat nu primește lunile în care a fost dezactivat", () => {
+    // Acumulat ianuarie–februarie, dezactivat în martie, reactivat pe 20 septembrie.
+    const reactivatedAt = new Date("2026-09-20T09:00:00Z");
+    expect(
+      monthsToAccrue({ ...veteran, accrued: months(2026, 1, 2), reactivatedAt, now: new Date("2026-10-01T02:00:00Z") })
+    ).toEqual([{ year: 2026, month: 9 }]);
+    // Cont creat în 2025, niciodată acumulat, reactivat în octombrie 2026.
+    const old = { hireDate: day("2020-03-01"), createdAt: new Date("2025-02-20T09:00:00Z") };
+    expect(
+      monthsToAccrue({ ...old, accrued: [], reactivatedAt: new Date("2026-10-05T09:00:00Z"), now: new Date("2026-11-01T02:00:00Z") })
+    ).toEqual([{ year: 2026, month: 10 }]);
+  });
 });

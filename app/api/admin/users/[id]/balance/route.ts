@@ -4,7 +4,12 @@ import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
 import { balanceAdjustmentSchema } from "@/lib/validators";
 import { BALANCE_ADJUSTMENT_ACTION } from "@/lib/audit/actions";
-import { adjustmentYears } from "@/lib/leaves/rollover";
+import {
+  adjustmentYears,
+  openingBalanceYear,
+  parseAdjustmentDetails,
+} from "@/lib/leaves/rollover";
+import { daysText } from "@/lib/constraints/messages";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -12,6 +17,13 @@ type RouteContext = {
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/** O scădere pe un an anume nu poate lua mai multe zile decât s-au câștigat în acel an. */
+class YearOverdrawn extends Error {
+  constructor(readonly year: number, readonly earned: number) {
+    super("YEAR_OVERDRAWN");
+  }
 }
 
 /**
@@ -45,8 +57,10 @@ export async function POST(request: Request, context: RouteContext) {
 
     const { delta, reason } = parsed.data;
     const years = adjustmentYears(new Date());
-    const year = parsed.data.year ?? years[years.length - 1];
-    if (!years.includes(year)) {
+    // Adăugare: anul ales sau anul curent. Scădere: anul ales (corectură) sau null, adică
+    // cele mai vechi zile, ca un concediu (vezi parseAdjustmentDetails).
+    const year = delta > 0 ? (parsed.data.year ?? years[years.length - 1]) : (parsed.data.year ?? null);
+    if (year !== null && !years.includes(year)) {
       return NextResponse.json(
         {
           error: `Alege un an ale cărui zile nu au expirat încă: ${years.slice(0, -1).join(", ")}${years.length > 1 ? " sau " : ""}${years[years.length - 1]}.`,
@@ -60,13 +74,33 @@ export async function POST(request: Request, context: RouteContext) {
       await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${id} FOR UPDATE`;
       const user = await tx.user.findUnique({
         where: { id },
-        select: { availableDays: true, role: true },
+        select: { availableDays: true, role: true, initialLeaveDays: true, hireDate: true, createdAt: true },
       });
       if (!user) {
         return null;
       }
       if (user.role !== Role.EMPLOYEE) {
         throw new Error("NOT_AN_EMPLOYEE");
+      }
+
+      if (year !== null && delta < 0) {
+        const [accrued, adjustmentLogs] = await Promise.all([
+          tx.leaveAccrual.aggregate({ where: { userId: id, year }, _sum: { days: true } }),
+          tx.auditLog.findMany({
+            where: { action: BALANCE_ADJUSTMENT_ACTION, entityType: "User", entityId: id },
+            select: { details: true, createdAt: true },
+          }),
+        ]);
+        const adjusted = adjustmentLogs
+          .map((log) => parseAdjustmentDetails(log.details, log.createdAt))
+          .filter((entry) => entry?.year === year)
+          .reduce((sum, entry) => sum + (entry?.days ?? 0), 0);
+        const opening =
+          openingBalanceYear(user.hireDate, user.createdAt) === year ? user.initialLeaveDays : 0;
+        const earned = round2((accrued._sum.days ?? 0) + opening + adjusted);
+        if (round2(earned + delta) < 0) {
+          throw new YearOverdrawn(year, earned);
+        }
       }
 
       const before = user.availableDays;
@@ -102,6 +136,15 @@ export async function POST(request: Request, context: RouteContext) {
 
     return NextResponse.json({ data: result });
   } catch (error) {
+    if (error instanceof YearOverdrawn) {
+      return NextResponse.json(
+        {
+          error: `Din ${error.year} angajatul are ${daysText(Math.max(error.earned, 0))} câștigate până acum. Alege „Cele mai vechi zile” sau scade mai puțin.`,
+          field: "year",
+        },
+        { status: 400 }
+      );
+    }
     if (error instanceof Error && error.message === "NOT_AN_EMPLOYEE") {
       return NextResponse.json(
         { error: "Soldul se poate ajusta doar pentru conturile de angajat." },

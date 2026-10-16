@@ -403,10 +403,14 @@ describe("ajustările manuale de sold", () => {
   const accruals = [...accrue(2024), ...accrue(2025), ...accrue(2026, 6)];
   const julyFirst2026 = { latestExpired: 2024, alreadyExpired: [], pendingLeaves: [], approvedLeaves: [] };
 
-  it("anul se citește din jurnal; ajustările vechi, fără an, aparțin anului în care au fost făcute", () => {
+  it("anul se citește din jurnal; adăugările vechi, fără an, aparțin anului în care au fost făcute", () => {
     const createdAt = new Date("2026-03-10T10:00:00Z");
     expect(parseAdjustmentDetails({ delta: 3, year: 2025, reason: "x" }, createdAt)).toEqual({ year: 2025, days: 3 });
-    expect(parseAdjustmentDetails({ delta: -2, reason: "x" }, createdAt)).toEqual({ year: 2026, days: -2 });
+    expect(parseAdjustmentDetails({ delta: 2, reason: "x" }, createdAt)).toEqual({ year: 2026, days: 2 });
+    // O scădere cu an corectează acel an; fără an (sau rânduri vechi) consumă cele mai vechi zile.
+    expect(parseAdjustmentDetails({ delta: -2, year: 2026 }, createdAt)).toEqual({ year: 2026, days: -2 });
+    expect(parseAdjustmentDetails({ delta: -2, year: null }, createdAt)).toBeNull();
+    expect(parseAdjustmentDetails({ delta: -2, reason: "x" }, createdAt)).toBeNull();
     // 31 decembrie 22:30 UTC este deja 1 ianuarie în România.
     expect(parseAdjustmentDetails({ delta: 1 }, new Date("2025-12-31T22:30:00Z"))).toEqual({ year: 2026, days: 1 });
     expect(parseAdjustmentDetails({ reason: "fără zile" }, createdAt)).toBeNull();
@@ -446,6 +450,16 @@ describe("ajustările manuale de sold", () => {
       entitlements: userEntitlements(user, accruals, [{ year: 2026, days: -3 }]),
     });
     expect(steps[0]).toMatchObject({ expiredYear: 2024, expiredDays: 21 });
+  });
+
+  it("o scădere din cele mai vechi zile (ex. concediu luat în afara aplicației) consumă FIFO", () => {
+    // Nimic luat în aplicație; adminul scade 10 zile luate în afara ei: din 2024 expiră 11, nu 21.
+    const steps = planRollover({
+      ...julyFirst2026,
+      availableDays: 21 + 21 + 10.5 - 10,
+      entitlements: userEntitlements(user, accruals),
+    });
+    expect(steps[0]).toMatchObject({ expiredYear: 2024, expiredDays: 11 });
   });
 
   it("avertizarea din timp (projectExpiringDays) ține cont de anul ajustării", () => {

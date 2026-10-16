@@ -8,6 +8,19 @@ import { MONTHLY_ACCRUAL_DAYS, monthsToAccrue, type AccrualMonth } from '@/lib/l
 // Un angajat înseamnă câteva interogări; lăsăm timp pentru firme mai mari.
 export const maxDuration = 300;
 
+/** Rând UPDATE_USER în care contul a fost reactivat (changes.active: false → true). */
+function wasReactivation(details: unknown): boolean {
+  if (typeof details !== 'object' || details === null || Array.isArray(details)) {
+    return false;
+  }
+  const changes = (details as { changes?: unknown }).changes;
+  if (typeof changes !== 'object' || changes === null) {
+    return false;
+  }
+  const active = (changes as { active?: unknown }).active;
+  return typeof active === 'object' && active !== null && (active as { to?: unknown }).to === true;
+}
+
 // LeaveAccrual are @@unique([userId, month, year]): P2002 înseamnă că luna a fost deja acumulată.
 function isAlreadyAccrued(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -27,10 +40,28 @@ export async function GET(req: NextRequest) {
     select: { id: true, hireDate: true, createdAt: true },
   });
 
-  const existing = await prisma.leaveAccrual.findMany({
-    where: { userId: { in: users.map((user) => user.id) } },
-    select: { userId: true, year: true, month: true },
-  });
+  const userIds = users.map((user) => user.id);
+  const [existing, updateLogs] = await Promise.all([
+    prisma.leaveAccrual.findMany({
+      where: { userId: { in: userIds } },
+      select: { userId: true, year: true, month: true },
+    }),
+    // Reactivările (UPDATE_USER cu active false → true): lunile de dinainte, când contul
+    // era dezactivat, nu se recuperează.
+    prisma.auditLog.findMany({
+      where: { action: 'UPDATE_USER', entityType: 'User', entityId: { in: userIds } },
+      select: { entityId: true, details: true, createdAt: true },
+    }),
+  ]);
+  const reactivatedAtByUser = new Map<string, Date>();
+  for (const log of updateLogs) {
+    if (log.entityId && wasReactivation(log.details)) {
+      const previous = reactivatedAtByUser.get(log.entityId);
+      if (!previous || log.createdAt > previous) {
+        reactivatedAtByUser.set(log.entityId, log.createdAt);
+      }
+    }
+  }
   const accruedByUser = new Map<string, AccrualMonth[]>();
   for (const row of existing) {
     const list = accruedByUser.get(row.userId) ?? [];
@@ -38,40 +69,49 @@ export async function GET(req: NextRequest) {
     accruedByUser.set(row.userId, list);
   }
 
-  const due = users.flatMap((user) =>
-    monthsToAccrue({
-      hireDate: user.hireDate,
-      createdAt: user.createdAt,
-      accrued: accruedByUser.get(user.id) ?? [],
-      now,
-    }).map((month) => ({ userId: user.id, ...month }))
-  );
+  const due = users
+    .map((user) => ({
+      userId: user.id,
+      months: monthsToAccrue({
+        hireDate: user.hireDate,
+        createdAt: user.createdAt,
+        accrued: accruedByUser.get(user.id) ?? [],
+        reactivatedAt: reactivatedAtByUser.get(user.id) ?? null,
+        now,
+      }),
+    }))
+    .filter((entry) => entry.months.length > 0);
 
   let accrued = 0;
   let skipped = 0;
   let failed = 0;
   const months = new Set<string>();
 
-  for (const { userId, year, month } of due) {
+  for (const { userId, months: userMonths } of due) {
     try {
-      // Rândul de acumulare și creșterea soldului se scriu împreună sau deloc. O rulare
-      // concurentă se lovește de constrângerea unică și sare luna (P2002).
+      // Toate lunile unui angajat și creșterea soldului se scriu împreună sau deloc, ca o
+      // eroare să nu lase o lună lipsă înaintea unei luni scrise (n-ar mai fi recuperată).
+      // O rulare concurentă se lovește de constrângerea unică și sare angajatul (P2002).
       await prisma.$transaction([
-        prisma.leaveAccrual.create({
-          data: { userId, month, year, days: MONTHLY_ACCRUAL_DAYS },
-          select: { id: true },
-        }),
-        adjustAvailableDays(prisma, userId, MONTHLY_ACCRUAL_DAYS),
+        ...userMonths.map(({ year, month }) =>
+          prisma.leaveAccrual.create({
+            data: { userId, month, year, days: MONTHLY_ACCRUAL_DAYS },
+            select: { id: true },
+          })
+        ),
+        adjustAvailableDays(prisma, userId, MONTHLY_ACCRUAL_DAYS * userMonths.length),
       ]);
 
-      accrued++;
-      months.add(`${month}/${year}`);
+      accrued += userMonths.length;
+      for (const { year, month } of userMonths) {
+        months.add(`${month}/${year}`);
+      }
     } catch (e) {
       if (isAlreadyAccrued(e)) {
         skipped++;
       } else {
         failed++;
-        console.error(`[Accrual] Eroare user ${userId}, luna ${month}/${year}:`, e);
+        console.error(`[Accrual] Eroare user ${userId}:`, e);
       }
     }
   }
@@ -80,7 +120,7 @@ export async function GET(req: NextRequest) {
     accrued,
     skipped,
     failed,
-    upToDate: users.length - new Set(due.map((entry) => entry.userId)).size,
+    upToDate: users.length - due.length,
     months: [...months],
   };
   console.log(

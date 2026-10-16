@@ -201,8 +201,11 @@ export const balanceAdjustmentSchema = z.object({
     .min(1, "Motivul este obligatoriu")
     .min(5, "Motivul trebuie să aibă cel puțin 5 caractere")
     .max(500, "Motivul poate avea cel mult 500 de caractere"),
-  /** Anul zilelor adăugate sau scăzute (expiră cu acel an). Lipsă: anul curent. */
-  year: z.number({ error: "Alege anul zilelor" }).int("Alege anul zilelor").optional(),
+  /**
+   * Anul zilelor (expiră cu acel an). La adăugare, lipsă = anul curent; la scădere,
+   * lipsă sau null = cele mai vechi zile (ca un concediu luat).
+   */
+  year: z.number({ error: "Alege anul zilelor" }).int("Alege anul zilelor").nullable().optional(),
 });
 
 export type BalanceAdjustmentInput = z.input<typeof balanceAdjustmentSchema>;

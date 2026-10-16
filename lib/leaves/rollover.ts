@@ -74,9 +74,14 @@ export function adjustmentYears(now: Date): number[] {
 }
 
 /**
- * Anul și zilele (cu semn) dintr-un rând de audit BALANCE_ADJUSTMENT. Ajustările făcute
- * înainte ca dialogul să ceară anul aparțin anului în care au fost făcute (ora României).
- * Întoarce null dacă rândul nu are un număr valid de zile.
+ * Zilele (cu semn) pe care un rând de audit BALANCE_ADJUSTMENT le adaugă sau le scade din
+ * câștigul unui an:
+ * - o adăugare aparține anului ales; rândurile vechi, fără an, anului în care au fost
+ *   făcute (ora României);
+ * - o scădere cu an corectează zilele câștigate în acel an;
+ * - o scădere fără an („cele mai vechi zile”, ex. un concediu luat în afara aplicației)
+ *   nu schimbă câștigul niciunui an: rămâne doar în sold și consumă FIFO cele mai vechi
+ *   zile, ca o cerere de concediu. Întoarce null, ca și pentru un rând fără zile valide.
  */
 export function parseAdjustmentDetails(details: unknown, createdAt: Date): YearlyDays | null {
   if (typeof details !== "object" || details === null || Array.isArray(details)) {
@@ -86,10 +91,10 @@ export function parseAdjustmentDetails(details: unknown, createdAt: Date): Yearl
   if (typeof delta !== "number" || !Number.isFinite(delta)) {
     return null;
   }
-  return {
-    year: typeof year === "number" && Number.isInteger(year) ? year : currentYearInBucharest(createdAt),
-    days: delta,
-  };
+  if (typeof year === "number" && Number.isInteger(year)) {
+    return { year, days: delta };
+  }
+  return delta > 0 ? { year: currentYearInBucharest(createdAt), days: delta } : null;
 }
 
 /**

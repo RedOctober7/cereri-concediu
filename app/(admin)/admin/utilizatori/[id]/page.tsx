@@ -19,16 +19,16 @@ const ADJUSTMENTS_LIMIT = 5;
 function readAdjustment(
   details: unknown,
   createdAt: Date
-): { delta: number; reason: string; after: number; year: number } | null {
-  const entry = parseAdjustmentDetails(details, createdAt);
-  if (!entry || typeof details !== "object" || details === null) {
+): { delta: number; reason: string; after: number; year: number | null } | null {
+  if (typeof details !== "object" || details === null || Array.isArray(details)) {
     return null;
   }
-  const { reason, after } = details as Record<string, unknown>;
-  if (typeof reason !== "string" || typeof after !== "number") {
+  const { delta, reason, after } = details as Record<string, unknown>;
+  if (typeof delta !== "number" || typeof reason !== "string" || typeof after !== "number") {
     return null;
   }
-  return { delta: entry.days, reason, after, year: entry.year };
+  // null: o scădere din cele mai vechi zile (vezi parseAdjustmentDetails).
+  return { delta, reason, after, year: parseAdjustmentDetails(details, createdAt)?.year ?? null };
 }
 
 export default async function UserDetailPage({
