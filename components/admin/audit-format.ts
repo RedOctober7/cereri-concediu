@@ -288,6 +288,9 @@ export function formatAuditDetails(
       if (isNumber(details.delta)) {
         add("Ajustare", signed(details.delta), "delta");
       }
+      if (isNumber(details.year)) {
+        add("Zile din anul", String(details.year), "year");
+      }
       if (typeof details.reason === "string") {
         add("Motiv", details.reason, "reason");
       }

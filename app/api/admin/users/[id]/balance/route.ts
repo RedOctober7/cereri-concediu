@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
 import { balanceAdjustmentSchema } from "@/lib/validators";
 import { BALANCE_ADJUSTMENT_ACTION } from "@/lib/audit/actions";
+import { adjustmentYears } from "@/lib/leaves/rollover";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -14,9 +15,10 @@ function round2(value: number): number {
 }
 
 /**
- * Ajustare manuală a soldului (zile cu semn + motiv). Soldul și rândul din jurnal se
- * scriu în aceeași tranzacție, cu rândul utilizatorului blocat, ca la crearea cererilor
- * și la rollover: o cerere aprobată în paralel nu poate pierde sau dubla ajustarea.
+ * Ajustare manuală a soldului (zile cu semn + anul lor + motiv). Soldul și rândul din
+ * jurnal se scriu în aceeași tranzacție, cu rândul utilizatorului blocat, ca la crearea
+ * cererilor și la rollover: o cerere aprobată în paralel nu poate pierde sau dubla
+ * ajustarea. Anul din jurnal este cel după care expiră zilele (vezi parseAdjustmentDetails).
  */
 export async function POST(request: Request, context: RouteContext) {
   try {
@@ -42,6 +44,17 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const { delta, reason } = parsed.data;
+    const years = adjustmentYears(new Date());
+    const year = parsed.data.year ?? years[years.length - 1];
+    if (!years.includes(year)) {
+      return NextResponse.json(
+        {
+          error: `Alege un an ale cărui zile nu au expirat încă: ${years.slice(0, -1).join(", ")}${years.length > 1 ? " sau " : ""}${years[years.length - 1]}.`,
+          field: "year",
+        },
+        { status: 400 }
+      );
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${id} FOR UPDATE`;
@@ -73,11 +86,11 @@ export async function POST(request: Request, context: RouteContext) {
           action: BALANCE_ADJUSTMENT_ACTION,
           entityType: "User",
           entityId: id,
-          details: { delta, reason, before, after },
+          details: { delta, year, reason, before, after },
         },
       });
 
-      return { before, after, delta };
+      return { before, after, delta, year };
     });
 
     if (!result) {

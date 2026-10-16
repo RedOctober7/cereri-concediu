@@ -16,18 +16,22 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { DaysValue, FormField } from "@/components/admin/admin-ui";
 import { formatDays, pluralRo } from "@/components/admin/format";
 import { apiRequest, fieldErrorsFrom, omitKey, parseDecimal } from "@/components/admin/form-utils";
 import { balanceAdjustmentSchema } from "@/lib/validators";
+import { adjustmentYears } from "@/lib/leaves/rollover";
 import { cn } from "@/lib/utils";
 
 type Direction = "add" | "subtract";
 
 /**
  * „Ajustare sold”: adminul alege dacă adaugă sau scade zile (pe mobil tastatura
- * numerică nu are mereu semnul minus), numărul de zile și motivul, obligatoriu.
+ * numerică nu are mereu semnul minus), numărul de zile, anul lor și motivul, obligatoriu.
+ * Anul contează la expirare: zilele adăugate pentru anul N se pot folosi până pe
+ * 30 iunie N + 2, ca cele acumulate în acel an.
  */
 export function BalanceAdjustmentDialog({
   open,
@@ -46,6 +50,9 @@ export function BalanceAdjustmentDialog({
   const formRef = useRef<HTMLFormElement>(null);
   const [direction, setDirection] = useState<Direction>("add");
   const [days, setDays] = useState("");
+  // Anii ale căror zile nu au expirat încă; implicit anul curent (ultimul din listă).
+  const [years] = useState(() => adjustmentYears(new Date()));
+  const [year, setYear] = useState(() => years[years.length - 1]);
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -61,6 +68,7 @@ export function BalanceAdjustmentDialog({
   function reset() {
     setDirection("add");
     setDays("");
+    setYear(years[years.length - 1]);
     setReason("");
     setErrors({});
     setFormError(null);
@@ -74,7 +82,7 @@ export function BalanceAdjustmentDialog({
       setErrors({ delta: "Scrie numărul de zile fără semn și alege „Adaugă” sau „Scade”." });
       return;
     }
-    const input = { delta, reason };
+    const input = { delta, reason, year };
     const parsed = balanceAdjustmentSchema.safeParse(input);
     if (!parsed.success) {
       setErrors(fieldErrorsFrom(parsed.error.issues));
@@ -92,7 +100,7 @@ export function BalanceAdjustmentDialog({
     setSubmitting(false);
 
     if (!result.ok) {
-      if (result.field === "delta" || result.field === "reason") {
+      if (result.field === "delta" || result.field === "reason" || result.field === "year") {
         setErrors({ [result.field]: result.error });
       } else {
         setFormError(result.error);
@@ -190,6 +198,34 @@ export function BalanceAdjustmentDialog({
                   setErrors((current) => omitKey(current, "delta"));
                 }}
               />
+            )}
+          </FormField>
+
+          <FormField
+            id="balance-year"
+            label="Zile din anul"
+            error={errors.year}
+            hint={`Se pot folosi până pe 30 iunie ${year + 2}, ca zilele acumulate în ${year}.`}
+          >
+            {(field) => (
+              <div className="max-w-40">
+                <NativeSelect
+                  {...field}
+                  name="year"
+                  value={year}
+                  disabled={submitting}
+                  onChange={(event) => {
+                    setYear(Number(event.target.value));
+                    setErrors((current) => omitKey(current, "year"));
+                  }}
+                >
+                  {years.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
             )}
           </FormField>
 

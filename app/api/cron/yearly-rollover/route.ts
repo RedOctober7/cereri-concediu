@@ -3,10 +3,12 @@ import { LeaveStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { verifyCronRequest } from '@/lib/cron-auth';
 import { adjustAvailableDays } from '@/lib/leaves/balance';
+import { BALANCE_ADJUSTMENT_ACTION } from '@/lib/audit/actions';
 import {
   YEARLY_ROLLOVER_ACTION,
   expiryDeadline,
   latestExpiredYear,
+  parseAdjustmentDetails,
   parseRolloverDetails,
   planRollover,
   userEntitlements,
@@ -39,7 +41,7 @@ export async function GET(req: NextRequest) {
   // Filtru rapid, fără tranzacții: cine are deja rând de audit pentru toți anii de expirat
   // este sărit, ca o rulare repetată (ex. după un timeout) să avanseze repede.
   // Garanția rămâne verificarea din tranzacție, făcută sub lock.
-  const [accrualTotals, allRolloverLogs] = await Promise.all([
+  const [accrualTotals, allRolloverLogs, allAdjustmentLogs] = await Promise.all([
     prisma.leaveAccrual.groupBy({
       by: ['userId', 'year'],
       where: { year: { lte: latestExpired } },
@@ -49,6 +51,11 @@ export async function GET(req: NextRequest) {
       where: { action: YEARLY_ROLLOVER_ACTION, entityType: 'User' },
       select: { entityId: true, details: true },
     }),
+    // Ajustările manuale de sold aparțin anului ales de admin (vezi parseAdjustmentDetails).
+    prisma.auditLog.findMany({
+      where: { action: BALANCE_ADJUSTMENT_ACTION, entityType: 'User' },
+      select: { entityId: true, details: true, createdAt: true },
+    }),
   ]);
 
   const accrualsByUser = new Map<string, YearlyDays[]>();
@@ -56,6 +63,16 @@ export async function GET(req: NextRequest) {
     const list = accrualsByUser.get(row.userId) ?? [];
     list.push({ year: row.year, days: row._sum.days ?? 0 });
     accrualsByUser.set(row.userId, list);
+  }
+
+  const adjustmentsByUser = new Map<string, YearlyDays[]>();
+  for (const log of allAdjustmentLogs) {
+    const entry = parseAdjustmentDetails(log.details, log.createdAt);
+    if (log.entityId && entry) {
+      const list = adjustmentsByUser.get(log.entityId) ?? [];
+      list.push(entry);
+      adjustmentsByUser.set(log.entityId, list);
+    }
   }
 
   const expiredYearsByUser = new Map<string, number[]>();
@@ -71,7 +88,11 @@ export async function GET(req: NextRequest) {
   const dueUsers = users.filter(
     (user) =>
       yearsToExpire(
-        userEntitlements(user, accrualsByUser.get(user.id) ?? []),
+        userEntitlements(
+          user,
+          accrualsByUser.get(user.id) ?? [],
+          adjustmentsByUser.get(user.id) ?? []
+        ),
         expiredYearsByUser.get(user.id) ?? [],
         latestExpired
       ).length > 0
@@ -113,7 +134,22 @@ export async function GET(req: NextRequest) {
           select: { details: true },
         });
 
-        const entitlements = userEntitlements(user, accruals);
+        const adjustmentLogs = await tx.auditLog.findMany({
+          where: {
+            action: BALANCE_ADJUSTMENT_ACTION,
+            entityType: 'User',
+            entityId: id,
+          },
+          select: { details: true, createdAt: true },
+        });
+
+        const entitlements = userEntitlements(
+          user,
+          accruals,
+          adjustmentLogs
+            .map((log) => parseAdjustmentDetails(log.details, log.createdAt))
+            .filter((entry): entry is YearlyDays => entry !== null)
+        );
         const alreadyExpired = rolloverLogs
           .map((log) => parseRolloverDetails(log.details))
           .filter((entry): entry is YearlyDays => entry !== null);

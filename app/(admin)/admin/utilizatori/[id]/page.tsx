@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { toDateOnlyString, todayInBucharest } from "@/lib/dates";
 import { overlapsYear, workingDaysInYear } from "@/lib/leaves/year-days";
 import { BALANCE_ADJUSTMENT_ACTION } from "@/lib/audit/actions";
+import { parseAdjustmentDetails } from "@/lib/leaves/rollover";
 import {
   UserDetailClient,
   type BalanceAdjustmentRow,
@@ -15,15 +16,19 @@ import {
 const LEAVE_HISTORY_LIMIT = 100;
 const ADJUSTMENTS_LIMIT = 5;
 
-function readAdjustment(details: unknown): { delta: number; reason: string; after: number } | null {
-  if (typeof details !== "object" || details === null || Array.isArray(details)) {
+function readAdjustment(
+  details: unknown,
+  createdAt: Date
+): { delta: number; reason: string; after: number; year: number } | null {
+  const entry = parseAdjustmentDetails(details, createdAt);
+  if (!entry || typeof details !== "object" || details === null) {
     return null;
   }
-  const { delta, reason, after } = details as Record<string, unknown>;
-  if (typeof delta !== "number" || typeof reason !== "string" || typeof after !== "number") {
+  const { reason, after } = details as Record<string, unknown>;
+  if (typeof reason !== "string" || typeof after !== "number") {
     return null;
   }
-  return { delta, reason, after };
+  return { delta: entry.days, reason, after, year: entry.year };
 }
 
 export default async function UserDetailPage({
@@ -135,7 +140,7 @@ export default async function UserDetailPage({
     ]);
 
   const adjustments: BalanceAdjustmentRow[] = adjustmentLogs.flatMap((log) => {
-    const details = readAdjustment(log.details);
+    const details = readAdjustment(log.details, log.createdAt);
     return details
       ? [
           {

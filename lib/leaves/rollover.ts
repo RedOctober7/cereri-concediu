@@ -38,15 +38,58 @@ export function openingBalanceYear(hireDate: Date, createdAt: Date): number {
 
 export type YearlyDays = { year: number; days: number };
 
-/** Zilele câștigate pe ani: rândurile LeaveAccrual plus soldul inițial, atribuit lui `openingBalanceYear`. */
+/**
+ * Zilele câștigate pe ani: rândurile LeaveAccrual, soldul inițial (atribuit lui
+ * `openingBalanceYear`) și ajustările manuale de sold, fiecare în anul ei (vezi
+ * parseAdjustmentDetails). O ajustare negativă scade zilele anului ei, nu pe cele mai vechi.
+ */
 export function userEntitlements(
   user: { initialLeaveDays: number; hireDate: Date; createdAt: Date },
-  accruals: YearlyDays[]
+  accruals: YearlyDays[],
+  adjustments: YearlyDays[] = []
 ): YearlyDays[] {
   return [
     ...accruals,
     { year: openingBalanceYear(user.hireDate, user.createdAt), days: user.initialLeaveDays },
+    ...adjustments,
   ];
+}
+
+/** Anul calendaristic curent în România. */
+export function currentYearInBucharest(now: Date): number {
+  return toZonedTime(now, TIME_ZONE).getFullYear();
+}
+
+/**
+ * Anii în care adminul poate trece o ajustare de sold: de la anul ale cărui zile expiră
+ * următoarele până la anul curent. Zilele unui an deja expirat nu mai pot fi adăugate
+ * sau scăzute (s-ar pierde sau ar fi scăzute de două ori).
+ */
+export function adjustmentYears(now: Date): number[] {
+  const years: number[] = [];
+  for (let year = nextExpiringYear(now); year <= currentYearInBucharest(now); year++) {
+    years.push(year);
+  }
+  return years;
+}
+
+/**
+ * Anul și zilele (cu semn) dintr-un rând de audit BALANCE_ADJUSTMENT. Ajustările făcute
+ * înainte ca dialogul să ceară anul aparțin anului în care au fost făcute (ora României).
+ * Întoarce null dacă rândul nu are un număr valid de zile.
+ */
+export function parseAdjustmentDetails(details: unknown, createdAt: Date): YearlyDays | null {
+  if (typeof details !== "object" || details === null || Array.isArray(details)) {
+    return null;
+  }
+  const { delta, year } = details as Record<string, unknown>;
+  if (typeof delta !== "number" || !Number.isFinite(delta)) {
+    return null;
+  }
+  return {
+    year: typeof year === "number" && Number.isInteger(year) ? year : currentYearInBucharest(createdAt),
+    days: delta,
+  };
 }
 
 /**

@@ -1,10 +1,12 @@
 import { LeaveStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { addDaysUTC } from "@/lib/dates";
+import { BALANCE_ADJUSTMENT_ACTION } from "@/lib/audit/actions";
 import {
   YEARLY_ROLLOVER_ACTION,
   expiryDeadline,
   nextExpiringYear,
+  parseAdjustmentDetails,
   parseRolloverDetails,
   projectExpiringDays,
   userEntitlements,
@@ -44,7 +46,7 @@ export async function getUpcomingExpiry(
     return { year, lastDay, byUser };
   }
 
-  const [users, accruals, rolloverLogs, leaves] = await Promise.all([
+  const [users, accruals, rolloverLogs, adjustmentLogs, leaves] = await Promise.all([
     prisma.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, availableDays: true, initialLeaveDays: true, hireDate: true, createdAt: true },
@@ -57,6 +59,10 @@ export async function getUpcomingExpiry(
     prisma.auditLog.findMany({
       where: { action: YEARLY_ROLLOVER_ACTION, entityType: "User", entityId: { in: userIds } },
       select: { entityId: true, details: true },
+    }),
+    prisma.auditLog.findMany({
+      where: { action: BALANCE_ADJUSTMENT_ACTION, entityType: "User", entityId: { in: userIds } },
+      select: { entityId: true, details: true, createdAt: true },
     }),
     prisma.leaveRequest.findMany({
       where: {
@@ -80,6 +86,13 @@ export async function getUpcomingExpiry(
       push(expiredByUser, log.entityId, entry);
     }
   }
+  const adjustmentsByUser = new Map<string, YearlyDays[]>();
+  for (const log of adjustmentLogs) {
+    const entry = parseAdjustmentDetails(log.details, log.createdAt);
+    if (log.entityId && entry) {
+      push(adjustmentsByUser, log.entityId, entry);
+    }
+  }
   const pendingByUser = new Map<string, LeaveDays[]>();
   const approvedByUser = new Map<string, LeaveDays[]>();
   for (const leave of leaves) {
@@ -91,7 +104,11 @@ export async function getUpcomingExpiry(
     const days = projectExpiringDays({
       year,
       availableDays: user.availableDays,
-      entitlements: userEntitlements(user, accrualsByUser.get(user.id) ?? []),
+      entitlements: userEntitlements(
+        user,
+        accrualsByUser.get(user.id) ?? [],
+        adjustmentsByUser.get(user.id) ?? []
+      ),
       alreadyExpired: expiredByUser.get(user.id) ?? [],
       pendingLeaves: pendingByUser.get(user.id) ?? [],
       approvedLeaves: approvedByUser.get(user.id) ?? [],

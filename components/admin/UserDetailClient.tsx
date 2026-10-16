@@ -98,6 +98,8 @@ export type BalanceAdjustmentRow = {
   delta: number;
   reason: string;
   after: number;
+  /** Anul zilelor (expiră cu acel an). */
+  year: number;
   createdAt: string;
   actorName: string | null;
 };
@@ -300,6 +302,7 @@ function AdjustmentHistory({
                   )}
                 >
                   {signedDays(adjustment.delta)} {Math.abs(adjustment.delta) === 1 ? "zi" : "zile"}
+                  <span className="font-normal text-muted-foreground"> din {adjustment.year}</span>
                 </span>
                 <span className="text-xs text-muted-foreground tabular-nums">
                   {formatTimestamp(new Date(adjustment.createdAt))}
