@@ -5,10 +5,20 @@ import { AlertCircle, RotateCw } from "lucide-react";
 import { format } from "date-fns";
 import { ro } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
+// Localizarea DayPicker: aceeași ca date-fns `ro`, plus etichetele pentru cititoarele de
+// ecran („Mergi la luna următoare”, „Astăzi, ...”) în română.
+import { ro as dayPickerRo } from "react-day-picker/locale";
 import { Calendar } from "@/components/ui/calendar";
 import { todayInBucharest } from "@/lib/dates";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+
+/** Ziua de după `key` („2026-11-30” → „2026-12-01”). */
+function nextDayKey(key: string): string {
+  const date = new Date(`${key}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
 
 type CalendarMeta = {
   holidays: Array<{ date: string; name: string }>;
@@ -113,11 +123,20 @@ export function LeaveCalendar({
       .forEach((c) =>
         c.names.forEach((name) => byName.set(name, [...(byName.get(name) ?? []), c.date]))
       );
-    return Array.from(byName.entries()).map(([name, dates]) => ({
-      name,
-      first: dates[0],
-      last: dates[dates.length - 1],
-    }));
+    // Zilele la rând formează o perioadă: două concedii separate ale aceluiași coleg
+    // apar separat („2–3 noi, 23–27 noi”), nu ca o singură perioadă de o lună.
+    return Array.from(byName.entries()).map(([name, dates]) => {
+      const periods: { first: string; last: string }[] = [];
+      for (const date of dates) {
+        const current = periods[periods.length - 1];
+        if (current && nextDayKey(current.last) === date) {
+          current.last = date;
+        } else {
+          periods.push({ first: date, last: date });
+        }
+      }
+      return { name, periods };
+    });
   }, [meta, monthPrefix]);
   const holidaysInMonth = useMemo(
     () => (meta?.holidays ?? []).filter((h) => h.date.startsWith(monthPrefix)),
@@ -154,7 +173,10 @@ export function LeaveCalendar({
       ) : null}
       <Calendar
         mode="range"
-        locale={ro}
+        locale={dayPickerRo}
+        // Datele (sărbători, concedii) sunt încărcate doar pentru anul afișat: zilele din
+        // luna vecină (ex. 1 ianuarie în decembrie) ar apărea nemarcate, ca zile lucrătoare.
+        showOutsideDays={false}
         selected={selected}
         onSelect={onSelect}
         numberOfMonths={1}
@@ -207,8 +229,12 @@ export function LeaveCalendar({
                 {absentInMonth.map((a) => (
                   <li key={a.name} className="flex justify-between gap-2">
                     <span>{a.name}</span>
-                    <span className="text-muted-foreground tabular-nums">
-                      {a.first === a.last ? shortDay(a.first) : `${shortDay(a.first)} – ${shortDay(a.last)}`}
+                    <span className="text-right text-muted-foreground tabular-nums">
+                      {a.periods
+                        .map((p) =>
+                          p.first === p.last ? shortDay(p.first) : `${shortDay(p.first)} – ${shortDay(p.last)}`
+                        )
+                        .join(", ")}
                     </span>
                   </li>
                 ))}

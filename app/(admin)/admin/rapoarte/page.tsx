@@ -37,7 +37,7 @@ const REPORTS: Report[] = [
       'Punct de lucru',
       'Zile inițiale',
       'Zile acumulate',
-      'Zile luate',
+      'Zile aprobate',
       'Zile disponibile',
     ],
     format: 'Excel (.xlsx), anul curent',

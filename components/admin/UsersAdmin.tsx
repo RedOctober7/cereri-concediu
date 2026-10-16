@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight, Search, SearchX, UserPlus, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ActiveBadge, DaysValue, EmptyState, PageHeader } from "@/components/admin/admin-ui";
-import { normalizeSearch, pluralRo } from "@/components/admin/format";
+import { daysUnit, normalizeSearch, pluralRo } from "@/components/admin/format";
 import { UserCreateDialog, type CreatedUser } from "@/components/admin/UserCreateDialog";
 import type { WorkPointOption } from "@/components/admin/user-fields";
 import { cn } from "@/lib/utils";
@@ -38,14 +38,9 @@ export type UserRow = {
   workPoint: { id: string; name: string } | null;
 };
 
-export type UserStatusFilter = "toti" | "activi" | "inactivi";
+import { parseUserFilters, type UserFilters, type UserStatusFilter } from "@/components/admin/user-filters";
 
-export type UserFilters = {
-  q: string;
-  status: UserStatusFilter;
-  /** "" = toate, NO_WORK_POINT = fără punct de lucru, altfel id-ul punctului. */
-  workPoint: string;
-};
+export type { UserFilters, UserStatusFilter };
 
 const NO_WORK_POINT = "fara";
 
@@ -86,27 +81,32 @@ function StatusCell({ user }: { user: UserRow }) {
 export function UsersAdmin({
   users,
   workPoints,
-  initialFilters,
   defaultEmployer,
   jobTitles,
 }: {
   users: UserRow[];
   workPoints: WorkPointOption[];
-  initialFilters: UserFilters;
   defaultEmployer: string;
   jobTitles: string[];
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
-  const [filters, setFilters] = useState<UserFilters>(() => ({
-    ...initialFilters,
-    // Un id din URL care nu mai există nu trebuie să ascundă toată lista.
-    workPoint:
-      initialFilters.workPoint === NO_WORK_POINT ||
-      workPoints.some((workPoint) => workPoint.id === initialFilters.workPoint)
-        ? initialFilters.workPoint
-        : "",
-  }));
+  // Filtrele se citesc din URL-ul curent, nu din props: la „Înapoi” din pagina unui
+  // angajat Next refolosește pagina randată prima dată (fără filtre), dar URL-ul păstrează
+  // filtrele scrise mai jos cu replaceState.
+  const [filters, setFilters] = useState<UserFilters>(() => {
+    const initial = parseUserFilters((key) => searchParams.get(key));
+    return {
+      ...initial,
+      // Un id din URL care nu mai există nu trebuie să ascundă toată lista.
+      workPoint:
+        initial.workPoint === NO_WORK_POINT ||
+        workPoints.some((workPoint) => workPoint.id === initial.workPoint)
+          ? initial.workPoint
+          : "",
+    };
+  });
 
   // Filtrele stau în URL: la întoarcerea din pagina unui angajat lista rămâne filtrată.
   useEffect(() => {
@@ -387,7 +387,9 @@ export function UsersAdmin({
                           </div>
                           <p className="shrink-0 text-right text-sm">
                             <DaysValue value={user.availableDays} className="font-medium" />{" "}
-                            <span className="text-xs text-muted-foreground">zile</span>
+                            <span className="text-xs text-muted-foreground">
+                              {daysUnit(user.availableDays)}
+                            </span>
                           </p>
                         </div>
                         <p className="truncate text-sm text-muted-foreground">

@@ -9,10 +9,11 @@ import { Button, buttonVariants } from "@/components/ui/button";
 /** Eroare într-o pagină de admin: meniul rămâne, conținutul se poate reîncărca. */
 export default function AdminError({
   error,
-  unstable_retry,
+  retry,
 }: {
   error: Error & { digest?: string };
-  unstable_retry: () => void;
+  // Next 16.3: `retry` (stabil) reîncarcă datele de pe server, apoi pagina.
+  retry: () => void;
 }) {
   useEffect(() => {
     console.error("[Admin] Eroare:", error);
@@ -34,7 +35,7 @@ export default function AdminError({
         ) : null}
       </div>
       <div className="flex flex-wrap justify-center gap-2">
-        <Button className="h-9 gap-2 px-3" onClick={() => unstable_retry()}>
+        <Button className="h-9 gap-2 px-3" onClick={() => retry()}>
           <RotateCw />
           Reîncearcă
         </Button>

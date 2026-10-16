@@ -42,7 +42,7 @@ export async function GET() {
     { header: 'Punct de lucru', key: 'workPoint', width: 20 },
     { header: 'Zile inițiale', key: 'initial', width: 15 },
     { header: 'Zile acumulate (an curent)', key: 'accrued', width: 25 },
-    { header: 'Zile luate (an curent)', key: 'used', width: 20 },
+    { header: 'Zile aprobate (an curent)', key: 'used', width: 24 },
     { header: 'Zile disponibile', key: 'available', width: 18 },
   ];
 

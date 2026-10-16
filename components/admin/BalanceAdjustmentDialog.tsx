@@ -16,18 +16,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { DaysValue, FormField } from "@/components/admin/admin-ui";
-import { formatDays, pluralRo } from "@/components/admin/format";
+import { daysUnit, pluralRo } from "@/components/admin/format";
 import { apiRequest, fieldErrorsFrom, omitKey, parseDecimal } from "@/components/admin/form-utils";
 import { balanceAdjustmentSchema } from "@/lib/validators";
+import { adjustmentYears } from "@/lib/leaves/rollover";
 import { cn } from "@/lib/utils";
 
 type Direction = "add" | "subtract";
 
 /**
  * „Ajustare sold”: adminul alege dacă adaugă sau scade zile (pe mobil tastatura
- * numerică nu are mereu semnul minus), numărul de zile și motivul, obligatoriu.
+ * numerică nu are mereu semnul minus), numărul de zile, anul lor și motivul, obligatoriu.
+ * Anul contează la expirare: zilele adăugate pentru anul N se pot folosi până pe
+ * 30 iunie N + 2, ca cele acumulate în acel an. O scădere consumă implicit cele mai vechi
+ * zile, ca un concediu (ex. unul luat în afara aplicației); un an anume se alege doar
+ * pentru a corecta zilele acordate greșit în acel an.
  */
 export function BalanceAdjustmentDialog({
   open,
@@ -46,6 +52,10 @@ export function BalanceAdjustmentDialog({
   const formRef = useRef<HTMLFormElement>(null);
   const [direction, setDirection] = useState<Direction>("add");
   const [days, setDays] = useState("");
+  // Anii ale căror zile nu au expirat încă. Adăugare: implicit anul curent (ultimul din
+  // listă). Scădere: implicit null, adică cele mai vechi zile.
+  const [years] = useState(() => adjustmentYears(new Date()));
+  const [year, setYear] = useState<number | null>(() => years[years.length - 1]);
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -61,6 +71,7 @@ export function BalanceAdjustmentDialog({
   function reset() {
     setDirection("add");
     setDays("");
+    setYear(years[years.length - 1]);
     setReason("");
     setErrors({});
     setFormError(null);
@@ -74,7 +85,7 @@ export function BalanceAdjustmentDialog({
       setErrors({ delta: "Scrie numărul de zile fără semn și alege „Adaugă” sau „Scade”." });
       return;
     }
-    const input = { delta, reason };
+    const input = { delta, reason, year };
     const parsed = balanceAdjustmentSchema.safeParse(input);
     if (!parsed.success) {
       setErrors(fieldErrorsFrom(parsed.error.issues));
@@ -92,7 +103,7 @@ export function BalanceAdjustmentDialog({
     setSubmitting(false);
 
     if (!result.ok) {
-      if (result.field === "delta" || result.field === "reason") {
+      if (result.field === "delta" || result.field === "reason" || result.field === "year") {
         setErrors({ [result.field]: result.error });
       } else {
         setFormError(result.error);
@@ -102,7 +113,7 @@ export function BalanceAdjustmentDialog({
 
     const sign = result.data.delta > 0 ? "+" : "-";
     toast.success(
-      `Sold ajustat cu ${sign}${pluralRo(Math.abs(result.data.delta), "zi", "zile")}. Sold nou: ${formatDays(result.data.after)} zile.`
+      `Sold ajustat cu ${sign}${pluralRo(Math.abs(result.data.delta), "zi", "zile")}. Sold nou: ${pluralRo(result.data.after, "zi", "zile")}.`
     );
     onOpenChange(false);
     router.refresh();
@@ -160,7 +171,11 @@ export function BalanceAdjustmentDialog({
                     name="direction"
                     value={option.value}
                     checked={direction === option.value}
-                    onChange={() => setDirection(option.value)}
+                    onChange={() => {
+                      setDirection(option.value);
+                      setYear(option.value === "add" ? years[years.length - 1] : null);
+                      setErrors((current) => omitKey(current, "year"));
+                    }}
                     className="sr-only"
                   />
                   <option.icon aria-hidden="true" className="size-4" />
@@ -190,6 +205,41 @@ export function BalanceAdjustmentDialog({
                   setErrors((current) => omitKey(current, "delta"));
                 }}
               />
+            )}
+          </FormField>
+
+          <FormField
+            id="balance-year"
+            label="Zile din anul"
+            error={errors.year}
+            hint={
+              year === null
+                ? "Se scad întâi zilele cele mai vechi, ca la un concediu. Alege un an doar pentru a corecta zilele acordate greșit în acel an."
+                : direction === "add"
+                  ? `Se pot folosi până pe 30 iunie ${year + 2}, ca zilele acumulate în ${year}.`
+                  : `Se scad din zilele câștigate în ${year} (corectură).`
+            }
+          >
+            {(field) => (
+              <div className="max-w-56">
+                <NativeSelect
+                  {...field}
+                  name="year"
+                  value={year ?? ""}
+                  disabled={submitting}
+                  onChange={(event) => {
+                    setYear(event.target.value === "" ? null : Number(event.target.value));
+                    setErrors((current) => omitKey(current, "year"));
+                  }}
+                >
+                  {direction === "subtract" ? <option value="">Cele mai vechi zile</option> : null}
+                  {years.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
             )}
           </FormField>
 
@@ -223,7 +273,7 @@ export function BalanceAdjustmentDialog({
               ) : (
                 <DaysValue value={preview} className="font-semibold" />
               )}
-              <span className="text-muted-foreground">zile</span>
+              <span className="text-muted-foreground">{daysUnit(preview ?? availableDays)}</span>
             </span>
           </div>
 

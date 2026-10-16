@@ -51,6 +51,19 @@ describe("trimiterea emailurilor", () => {
     expect(console.warn).toHaveBeenCalled();
   });
 
+  it("pe demo nu trimite niciun email, chiar dacă Resend e configurat", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_test");
+    vi.stubEnv("DEMO_MODE", "true");
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const { sendLeaveRejectedEmail, sendWelcomeEmail } = await loadSend();
+
+    await expect(sendLeaveRejectedEmail(rejected)).resolves.toEqual({ sent: false, reason: "demo" });
+    await expect(
+      sendWelcomeEmail({ to: "oricine@exemplu.com", fullName: "Text vizitator", username: "x", password: "y" })
+    ).resolves.toEqual({ sent: false, reason: "demo" });
+    expect(resend.send).not.toHaveBeenCalled();
+  });
+
   it("creează clientul la primul email și îl refolosește", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_test");
     vi.stubEnv("EMAIL_FROM", "concedii@firma.ro");

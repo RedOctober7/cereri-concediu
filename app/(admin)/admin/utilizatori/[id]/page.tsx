@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { toDateOnlyString, todayInBucharest } from "@/lib/dates";
 import { overlapsYear, workingDaysInYear } from "@/lib/leaves/year-days";
 import { BALANCE_ADJUSTMENT_ACTION } from "@/lib/audit/actions";
+import { parseAdjustmentDetails } from "@/lib/leaves/rollover";
 import {
   UserDetailClient,
   type BalanceAdjustmentRow,
@@ -15,7 +16,10 @@ import {
 const LEAVE_HISTORY_LIMIT = 100;
 const ADJUSTMENTS_LIMIT = 5;
 
-function readAdjustment(details: unknown): { delta: number; reason: string; after: number } | null {
+function readAdjustment(
+  details: unknown,
+  createdAt: Date
+): { delta: number; reason: string; after: number; year: number | null } | null {
   if (typeof details !== "object" || details === null || Array.isArray(details)) {
     return null;
   }
@@ -23,7 +27,8 @@ function readAdjustment(details: unknown): { delta: number; reason: string; afte
   if (typeof delta !== "number" || typeof reason !== "string" || typeof after !== "number") {
     return null;
   }
-  return { delta, reason, after };
+  // null: o scădere din cele mai vechi zile (vezi parseAdjustmentDetails).
+  return { delta, reason, after, year: parseAdjustmentDetails(details, createdAt)?.year ?? null };
 }
 
 export default async function UserDetailPage({
@@ -135,7 +140,7 @@ export default async function UserDetailPage({
     ]);
 
   const adjustments: BalanceAdjustmentRow[] = adjustmentLogs.flatMap((log) => {
-    const details = readAdjustment(log.details);
+    const details = readAdjustment(log.details, log.createdAt);
     return details
       ? [
           {

@@ -15,9 +15,16 @@ import {
 import {
   calculateWorkingDays,
   intervalIntersectsMonth,
+  isWorkingDay,
 } from "@/lib/holidays";
 import { addWorkingDays } from "@/lib/working-days";
-import { monthName, type ValidationResult } from "@/lib/constraints/types";
+import { type ValidationResult } from "@/lib/constraints/types";
+import {
+  balanceViolationMessage,
+  blackoutMonthMessage,
+  minNoticeMessage,
+  uninterruptedVacationMessage,
+} from "@/lib/constraints/messages";
 import { parseConstraintConfig } from "@/lib/validators";
 
 export const OVERLAPPING_LEAVE_MESSAGE =
@@ -66,14 +73,6 @@ async function getActiveConstraints(workPointId: string | null) {
 
 type LeaveInterval = { startDate: Date; endDate: Date; workingDays: number };
 
-const daysFormatter = new Intl.NumberFormat("ro-RO", { maximumFractionDigits: 2 });
-
-/** „1 zi lucrătoare”, „5 zile lucrătoare”, „20 de zile lucrătoare”. */
-function workingDaysText(count: number): string {
-  if (count === 1) return "1 zi lucrătoare";
-  const lastTwo = count % 100;
-  return `${count} ${lastTwo === 0 || lastTwo >= 20 ? "de " : ""}zile lucrătoare`;
-}
 
 /**
  * Intervale de concediu lipite: între două cereri nu există nicio zi lucrătoare (ex.
@@ -175,7 +174,7 @@ async function uninterruptedVacationViolation({
     return null;
   }
 
-  return `În ${year} nu există încă un concediu neîntrerupt de cel puțin ${workingDaysText(minDays)}, iar după această cerere ar rămâne ${daysFormatter.format(after)} zile disponibile (Codul muncii, art. 148)`;
+  return uninterruptedVacationMessage(year, minDays, after);
 }
 
 function blocked(blockingError: string, workingDays: number): ValidationResult {
@@ -238,11 +237,7 @@ export async function validateLeaveRequest(
   const pendingDays = pending._sum.workingDays ?? 0;
   const freeDays = Math.round((user.availableDays - pendingDays) * 100) / 100;
   if (workingDays > freeDays) {
-    violations.push(
-      pendingDays > 0
-        ? `Cererea depășește zilele disponibile (${daysFormatter.format(freeDays)} disponibile după cererile în așteptare, ${workingDays} solicitate)`
-        : `Cererea depășește zilele disponibile (${daysFormatter.format(freeDays)} disponibile, ${workingDays} solicitate)`
-    );
+    violations.push(balanceViolationMessage(freeDays, workingDays, pendingDays));
   }
 
   const constraints = await getActiveConstraints(user.workPointId);
@@ -260,19 +255,21 @@ export async function validateLeaveRequest(
 
     switch (constraint.type) {
       case ConstraintType.MIN_NOTICE_DAYS: {
+        // Preavizul se măsoară până la prima zi lucrătoare a concediului: o cerere care
+        // începe sâmbăta are același preaviz ca una care începe luni.
+        let firstWorkingDay = start;
+        while (!isWorkingDay(firstWorkingDay) && firstWorkingDay < end) {
+          firstWorkingDay = addDaysUTC(firstWorkingDay, 1);
+        }
         const minDate = addWorkingDays(today, config.days);
-        if (start < minDate) {
-          violations.push(
-            `Preaviz minim ${workingDaysText(config.days)} (cererea trebuia depusă cu cel puțin ${workingDaysText(config.days)} înainte)`
-          );
+        if (firstWorkingDay < minDate) {
+          violations.push(minNoticeMessage(config.days));
         }
         break;
       }
       case ConstraintType.BLACKOUT_MONTH: {
         if (intervalIntersectsMonth(start, end, config.month)) {
-          violations.push(
-            `Luna ${monthName(config.month)} este perioadă restricționată`
-          );
+          violations.push(blackoutMonthMessage(config.month));
         }
         break;
       }

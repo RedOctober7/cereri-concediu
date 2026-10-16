@@ -5,10 +5,10 @@ import { notifyLeaveApproved } from '@/lib/emails/leave-notifications';
 import { createAuditLog } from '@/lib/audit/log';
 import { calculateWorkingDays } from '@/lib/holidays';
 import { adjustAvailableDays } from '@/lib/leaves/balance';
+import { availableDaysText, workingDaysText } from '@/lib/constraints/messages';
 
 const NOT_PENDING_MESSAGE = 'Cererea nu mai este în așteptare.';
 
-const daysFormatter = new Intl.NumberFormat('ro-RO', { maximumFractionDigits: 2 });
 
 class NegativeBalanceError extends Error {
   constructor(
@@ -158,7 +158,7 @@ export async function POST(
     if (error instanceof NegativeBalanceError) {
       return NextResponse.json(
         {
-          error: `Angajatul are ${daysFormatter.format(error.availableDays)} zile disponibile, iar cererea are ${error.workingDays}. Confirmă aprobarea dacă firma acordă concediu în avans.`,
+          error: `Angajatul are ${availableDaysText(error.availableDays)}, iar cererea are ${workingDaysText(error.workingDays)}. Confirmă aprobarea dacă firma acordă concediu în avans.`,
           code: 'NEGATIVE_BALANCE',
         },
         { status: 409 }

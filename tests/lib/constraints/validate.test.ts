@@ -161,7 +161,7 @@ describe("validateLeaveRequest", () => {
       expect(result.blockingError).toBeNull();
       expect(result.violations).toEqual([
         "Preaviz minim 10 zile lucrătoare (cererea trebuia depusă cu cel puțin 10 zile lucrătoare înainte)",
-        "Luna Octombrie este perioadă restricționată",
+        "Luna octombrie este perioadă restricționată",
       ]);
       expect(db.constraint.findMany).toHaveBeenCalledWith({
         where: {
@@ -181,6 +181,19 @@ describe("validateLeaveRequest", () => {
       expect(result.violations).toEqual([]);
     });
 
+    it("preavizul se măsoară până la prima zi lucrătoare: o cerere care începe sâmbăta nu e semnalată fals", async () => {
+      db.constraint.findMany.mockResolvedValue([constraint(ConstraintType.MIN_NOTICE_DAYS, { days: 5 })]);
+
+      // Azi luni 12; sâmbătă 17 – vineri 23 are aceleași zile lucrătoare ca luni 19 – vineri 23.
+      const fromSaturday = await validateLeaveRequest(USER_ID, day("2026-10-17"), day("2026-10-23"));
+      expect(fromSaturday.violations).toEqual([]);
+
+      // Joi 15 – vineri 16 rămâne sub preaviz.
+      const tooSoon = await validateLeaveRequest(USER_ID, day("2026-10-15"), day("2026-10-16"));
+      expect(tooSoon.violations).toEqual([
+        "Preaviz minim 5 zile lucrătoare (cererea trebuia depusă cu cel puțin 5 zile lucrătoare înainte)",
+      ]);
+    });
   });
 
   describe("concediu neîntrerupt anual (MIN_ONE_VACATION_OF_N_DAYS, Codul muncii art. 148)", () => {

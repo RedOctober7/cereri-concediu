@@ -4,7 +4,7 @@
 
 Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai multe puncte de lucru (de exemplu, un lanț de farmacii). Angajații își depun cererile online și văd cine din echipă lipsește. Fiecare cerere ajunge la administrator, care o aprobă sau o respinge, iar regulile firmei îi semnalează ce trebuie verificat. Zilele se acumulează și expiră după regulile din Codul muncii, iar fiecare cerere aprobată are un PDF gata de semnat.
 
-> **In English:** a leave-management web app for a Romanian company with several locations. Employees request leave online, every request goes to an admin for approval with rule warnings attached, leave balances accrue monthly and expire per the Romanian Labour Code, and every approved request gets a signable PDF. Built with Next.js 16, TypeScript, Prisma/PostgreSQL and NextAuth, with ~300 unit tests run in two time zones and CI.
+> **In English:** a leave-management web app for a Romanian company with several locations. Employees request leave online, every request goes to an admin for approval with rule warnings attached, leave balances accrue monthly and expire per the Romanian Labour Code, and every approved request gets a signable PDF. Built with Next.js 16, TypeScript, Prisma/PostgreSQL and NextAuth, with ~390 unit tests run in two time zones and CI.
 
 **[Încearcă demo-ul →](https://cereri-concediu.vercel.app)** · intri cu un click, ca administrator sau ca angajat, pe date fictive.
 
@@ -22,12 +22,12 @@ Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai mult
 **Administratorul**
 - Panou cu ce cere atenție: cereri în așteptare, cine e în concediu azi, plecări în următoarele 14 zile, angajați cu sold mic și angajații cu zile care urmează să expire.
 - Aprobă sau respinge cereri, cu motiv, filtrate după status, punct de lucru și angajat. Vede soldul angajatului înainte și după aprobare și trebuie să confirme explicit o aprobare care l-ar face negativ. La fiecare cerere în așteptare vede câți colegi de la același punct de lucru lipsesc în acea perioadă, cu numele și zilele lor. Poate anula un concediu aprobat care nu a început.
-- Gestionează angajații: date, sold inițial, ajustări de sold cu motiv, resetare de parolă, dezactivare.
+- Gestionează angajații: date, sold inițial, ajustări de sold cu motiv și an, resetare de parolă, dezactivare.
 - Configurează reguli fără cod: preaviz minim, lună restricționată (ex. inventar), concediu neîntrerupt anual de minim 10 zile (art. 148).
 - Exportă situația zilelor în Excel și vede jurnalul complet al acțiunilor.
 
 **Automat**
-- Acumulare lunară de zile (cron Vercel).
+- Acumulare lunară de zile (cron Vercel). O lună ratată (rulare eșuată sau oprită) se recuperează la următoarea rulare, fără lunile în care contul era dezactivat.
 - Expirarea zilelor neefectuate după 18 luni (art. 146 alin. 2), pe principiul primul intrat, primul ieșit (FIFO), cu recuperarea anilor ratați.
 - Emailuri pentru cereri noi (către administratori), aprobări și respingeri.
 - Pe instanța demo, datele se refac în fiecare noapte: ce schimbă vizitatorii dispare, iar perioadele sunt din nou relative la ziua de azi.
@@ -47,11 +47,12 @@ Aplicație web pentru cererile de concediu de odihnă într-o firmă cu mai mult
 - **Nicio cerere nu se aprobă automat, iar regulile nu resping, ci atenționează**: o cerere care încalcă o regulă (sau depășește soldul, socotind și cererile încă în așteptare) ajunge la administrator cu motivul explicit. Doar suprapunerea cu o cerere proprie, o dată în trecut sau lipsa zilelor lucrătoare blochează trimiterea. Previzualizarea și crearea folosesc aceeași funcție de validare.
 - **Colegii absenți se numără pe oameni, nu pe cereri, și nu blochează nimic** (`lib/leaves/colleague-absences.ts`): un coleg cu două concedii în aceeași perioadă apare o singură dată. Lista se calculează la afișare, nu se salvează la depunere, deci o aprobare sau o anulare de mai târziu se vede imediat. Angajatul vede doar concediile aprobate ale colegilor (ca în calendar); adminul vede și cererile lor încă în așteptare.
 - **Avertizarea despre zilele care expiră folosește exact calculul expirării** (`planRollover`), rulat în avans: angajatul vede ce se va întâmpla efectiv pe 1 iulie, nu o estimare. Jurisprudența CJUE (C-619/16, C-684/16) cere ca angajatul să fie informat din timp înainte ca zilele să se piardă.
+- **Ajustările de sold au un an**: zilele adăugate aparțin unui an și expiră odată cu el (art. 146). O scădere se face dintr-un an anume, cel mult cât a câștigat angajatul în acel an, sau din cele mai vechi zile, ca un concediu.
 - **Operațiile pe sold sunt atomice**: crearea, aprobarea, anularea și ajustarea blochează rândul angajatului (`SELECT … FOR UPDATE`), iar tranzițiile de status sunt condiționate de statusul curent, ca un dublu click să nu scadă zilele de două ori. Cron-urile sunt idempotente.
 - **Securitate**:
   - rolul și starea contului se reîncarcă periodic din baza de date, deci un cont dezactivat își pierde accesul în câteva minute;
   - schimbarea sau resetarea parolei închide toate sesiunile deschise ale contului (`sessionVersion`);
-  - rate limiting la login pe utilizator + IP, cu Upstash Redis, iar login-ul durează la fel cu sau fără cont existent;
+  - rate limiting la login și la schimbarea parolei, pe utilizator + IP, cu Upstash Redis, iar login-ul durează la fel cu sau fără cont existent;
   - tokenurile de resetare se stochează doar ca hash, sunt de unică folosință și expiră într-o oră; răspunsul e același pentru orice utilizator, ca să nu se poată afla ce conturi există;
   - hash-urile parolelor sunt excluse global din interogările Prisma;
   - callbackUrl acceptă doar căi de pe același site.
@@ -105,7 +106,7 @@ $env:DEMO_MODE = "true"; $env:NEXT_PUBLIC_DEMO_MODE = "true"; npm run db:seed-de
 
 Variabilele pot fi puse și în `.env.local` (`DEMO_MODE=true`, `NEXT_PUBLIC_DEMO_MODE=true`), care funcționează la fel pe orice sistem.
 
-Scriptul creează 3 puncte de lucru, 10 angajați și cereri în toate stările. Cu `NEXT_PUBLIC_DEMO_MODE=true`, pagina de login afișează butoanele „Intră ca administrator” și „Intră ca angajat” (`admin.demo` / `angajat.demo`, parola `Demo2026!`). În modul demo, conturile demo nu pot fi dezactivate și parola lor nu poate fi schimbată.
+Scriptul creează 3 puncte de lucru, 10 angajați și cereri în toate stările. Cu `NEXT_PUBLIC_DEMO_MODE=true`, pagina de login afișează butoanele „Intră ca administrator” și „Intră ca angajat” (`admin.demo` / `angajat.demo`, parola `Demo2026!`). În modul demo, conturile demo nu pot fi dezactivate, parola lor nu poate fi schimbată și nu se trimite niciun email.
 
 | Comandă | Ce face |
 |---|---|
