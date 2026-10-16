@@ -10,6 +10,12 @@ import {
 import { addDaysUTC, todayInBucharest, utcDate } from "@/lib/dates";
 import { calculateWorkingDays } from "@/lib/holidays";
 import { nextExpiringYear } from "@/lib/leaves/rollover";
+import { MONTHLY_ACCRUAL_DAYS } from "@/lib/leaves/accrual";
+import {
+  balanceViolationMessage,
+  blackoutMonthMessage,
+  minNoticeMessage,
+} from "@/lib/constraints/messages";
 
 /**
  * Date demo fictive pentru o instanță publică (portofoliu). Toate datele sunt relative
@@ -21,7 +27,6 @@ import { DEMO_ADMIN_USERNAME, DEMO_EMPLOYEE_USERNAME, DEMO_PASSWORD } from "@/li
 export { DEMO_ADMIN_USERNAME, DEMO_EMPLOYEE_USERNAME, DEMO_PASSWORD };
 
 const COMPANY = "Farmacia Exemplu SRL";
-const MONTHLY_ACCRUAL = 1.75;
 
 type Person = {
   username: string;
@@ -181,23 +186,32 @@ async function writeDemoData(
     );
   }
 
-  // Acumulări lunare pentru lunile încheiate din anul curent (cel mult de la angajare).
-  const year = today.getUTCFullYear();
+  // Acumulări lunare, ca le-ar fi scris cronul (lunile încheiate, inclusiv luna angajării,
+  // pentru că angajarea e pe 1): de la angajare pentru cei angajați în ultimele 12 luni,
+  // altfel din ianuarie al anului lunii trecute (soldul inițial acoperă restul). Fiecare
+  // angajat are astfel lunile la rând până luna trecută, iar cronul nu mai are ce completa.
+  const lastMonth = monthsAgo(today, 1);
+  const balances = PEOPLE.map((person) => person.initialLeaveDays);
   for (const [index, user] of users.entries()) {
-    const hire = monthsAgo(today, PEOPLE[index].hiredMonthsAgo);
-    const firstMonth = hire.getUTCFullYear() === year ? hire.getUTCMonth() + 2 : 1;
-    const months: number[] = [];
-    for (let month = firstMonth; month <= today.getUTCMonth(); month++) {
-      months.push(month);
+    const person = PEOPLE[index];
+    let month =
+      person.hiredMonthsAgo <= 12
+        ? monthsAgo(today, person.hiredMonthsAgo)
+        : utcDate(lastMonth.getUTCFullYear(), 0, 1);
+    const months: { year: number; month: number }[] = [];
+    while (month <= lastMonth) {
+      months.push({ year: month.getUTCFullYear(), month: month.getUTCMonth() + 1 });
+      month = utcDate(month.getUTCFullYear(), month.getUTCMonth() + 1, 1);
     }
     if (months.length > 0) {
       await prisma.leaveAccrual.createMany({
-        data: months.map((month) => ({ userId: user.id, month, year, days: MONTHLY_ACCRUAL })),
+        data: months.map((entry) => ({ userId: user.id, ...entry, days: MONTHLY_ACCRUAL_DAYS })),
       });
       await prisma.user.update({
         where: { id: user.id },
-        data: { availableDays: { increment: months.length * MONTHLY_ACCRUAL } },
+        data: { availableDays: { increment: months.length * MONTHLY_ACCRUAL_DAYS } },
       });
+      balances[index] += months.length * MONTHLY_ACCRUAL_DAYS;
     }
   }
 
@@ -222,20 +236,33 @@ async function writeDemoData(
     // Urmează.
     { user: 5, offsetDays: 7, workingDays: 5, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 6 },
     { user: 0, offsetDays: 21, workingDays: 3, status: LeaveStatus.APPROVED_ADMIN, createdDaysAgo: 4 },
-    // În așteptarea deciziei adminului.
-    { user: 3, offsetDays: 1, workingDays: 3, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 0, violations: ["Preaviz minim 5 zile lucrătoare (cererea trebuia depusă cu cel puțin 5 zile lucrătoare înainte)"] },
-    { user: 6, offsetDays: 20, workingDays: 8, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 2, violations: ["Cererea depășește zilele disponibile (7 disponibile, 8 solicitate)"] },
-    { user: 9, offsetDays: daysUntilDecember8(today), workingDays: 5, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 1, violations: ["Luna Decembrie este perioadă restricționată"] },
+    // În așteptarea deciziei adminului (depășirea soldului se calculează mai jos, din soldul real).
+    { user: 3, offsetDays: 1, workingDays: 3, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 0, violations: [minNoticeMessage(5)] },
+    { user: 6, offsetDays: 20, workingDays: 10, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 2 },
+    { user: 9, offsetDays: daysUntilDecember8(today), workingDays: 5, status: LeaveStatus.PENDING_ADMIN, createdDaysAgo: 1, violations: [blackoutMonthMessage(12)] },
     // Respinse și anulate.
     { user: 6, offsetDays: -20, workingDays: 2, status: LeaveStatus.REJECTED, createdDaysAgo: 30, rejectionReason: "Inventar programat în aceeași săptămână." },
     { user: 1, offsetDays: 40, workingDays: 2, status: LeaveStatus.CANCELLED, createdDaysAgo: 9 },
   ];
 
+  const pendingDays = PEOPLE.map(() => 0);
   for (const spec of leaves) {
     const { start, end, days } = period(today, spec.offsetDays, spec.workingDays);
     const user = users[spec.user];
     const createdAt = new Date(now.getTime() - spec.createdDaysAgo * 86_400_000);
     const approved = spec.status === LeaveStatus.APPROVED_AUTO || spec.status === LeaveStatus.APPROVED_ADMIN;
+    const violations = [...(spec.violations ?? [])];
+    if (spec.status === LeaveStatus.PENDING_ADMIN) {
+      // Aceeași verificare ca validateLeaveRequest, ca textul să se potrivească cu soldul afișat.
+      const freeDays = Math.round((balances[spec.user] - pendingDays[spec.user]) * 100) / 100;
+      if (days > freeDays) {
+        violations.unshift(balanceViolationMessage(freeDays, days, pendingDays[spec.user]));
+      }
+      pendingDays[spec.user] += days;
+    }
+    if (approved) {
+      balances[spec.user] -= days;
+    }
     const leave = await prisma.leaveRequest.create({
       data: {
         userId: user.id,
@@ -243,7 +270,7 @@ async function writeDemoData(
         endDate: end,
         workingDays: days,
         status: spec.status,
-        violationReasons: spec.violations ?? [],
+        violationReasons: violations,
         rejectionReason: spec.rejectionReason ?? null,
         approvedById: spec.status === LeaveStatus.APPROVED_ADMIN ? admin.id : null,
         approvedAt: approved ? new Date(createdAt.getTime() + 3_600_000) : null,
