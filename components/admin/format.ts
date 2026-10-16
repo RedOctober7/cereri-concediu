@@ -50,10 +50,10 @@ export function formatMonthYear(month: number, year: number): string {
   });
 }
 
-/** „1 zi”, „5 zile”, „20 de zile” (în română „de” apare de la 20 în sus). */
+/** „1 zi”, „-1 zi”, „5 zile”, „20 de zile” (în română „de” apare de la 20 în sus). */
 export function pluralRo(count: number, one: string, many: string): string {
-  if (count === 1) {
-    return `1 ${one}`;
+  if (Math.abs(count) === 1) {
+    return `${count} ${one}`;
   }
   const lastTwo = Math.abs(count) % 100;
   const needsDe = Number.isInteger(count) && count !== 0 && (lastTwo === 0 || lastTwo >= 20);

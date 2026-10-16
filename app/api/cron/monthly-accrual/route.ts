@@ -3,22 +3,29 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { verifyCronRequest } from '@/lib/cron-auth';
 import { adjustAvailableDays } from '@/lib/leaves/balance';
-import { MONTHLY_ACCRUAL_DAYS, monthsToAccrue, type AccrualMonth } from '@/lib/leaves/accrual';
+import {
+  MONTHLY_ACCRUAL_DAYS,
+  inactivePeriods,
+  monthsToAccrue,
+  type AccrualMonth,
+  type ActiveChange,
+} from '@/lib/leaves/accrual';
 
 // Un angajat înseamnă câteva interogări; lăsăm timp pentru firme mai mari.
 export const maxDuration = 300;
 
-/** Rând UPDATE_USER în care contul a fost reactivat (changes.active: false → true). */
-function wasReactivation(details: unknown): boolean {
+/** Starea nouă a contului dintr-un rând UPDATE_USER (changes.active.to), dacă s-a schimbat. */
+function activeAfter(details: unknown): boolean | null {
   if (typeof details !== 'object' || details === null || Array.isArray(details)) {
-    return false;
+    return null;
   }
   const changes = (details as { changes?: unknown }).changes;
   if (typeof changes !== 'object' || changes === null) {
-    return false;
+    return null;
   }
   const active = (changes as { active?: unknown }).active;
-  return typeof active === 'object' && active !== null && (active as { to?: unknown }).to === true;
+  const to = typeof active === 'object' && active !== null ? (active as { to?: unknown }).to : undefined;
+  return typeof to === 'boolean' ? to : null;
 }
 
 // LeaveAccrual are @@unique([userId, month, year]): P2002 înseamnă că luna a fost deja acumulată.
@@ -46,20 +53,20 @@ export async function GET(req: NextRequest) {
       where: { userId: { in: userIds } },
       select: { userId: true, year: true, month: true },
     }),
-    // Reactivările (UPDATE_USER cu active false → true): lunile de dinainte, când contul
-    // era dezactivat, nu se recuperează.
+    // Dezactivările și reactivările (UPDATE_USER cu changes.active): lunile în care
+    // contul era dezactivat nu se recuperează.
     prisma.auditLog.findMany({
       where: { action: 'UPDATE_USER', entityType: 'User', entityId: { in: userIds } },
       select: { entityId: true, details: true, createdAt: true },
     }),
   ]);
-  const reactivatedAtByUser = new Map<string, Date>();
+  const activeChangesByUser = new Map<string, ActiveChange[]>();
   for (const log of updateLogs) {
-    if (log.entityId && wasReactivation(log.details)) {
-      const previous = reactivatedAtByUser.get(log.entityId);
-      if (!previous || log.createdAt > previous) {
-        reactivatedAtByUser.set(log.entityId, log.createdAt);
-      }
+    const active = activeAfter(log.details);
+    if (log.entityId && active !== null) {
+      const list = activeChangesByUser.get(log.entityId) ?? [];
+      list.push({ at: log.createdAt, active });
+      activeChangesByUser.set(log.entityId, list);
     }
   }
   const accruedByUser = new Map<string, AccrualMonth[]>();
@@ -76,7 +83,7 @@ export async function GET(req: NextRequest) {
         hireDate: user.hireDate,
         createdAt: user.createdAt,
         accrued: accruedByUser.get(user.id) ?? [],
-        reactivatedAt: reactivatedAtByUser.get(user.id) ?? null,
+        inactive: inactivePeriods(activeChangesByUser.get(user.id) ?? []),
         now,
       }),
     }))

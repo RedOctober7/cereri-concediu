@@ -5,10 +5,10 @@ import { monthName } from "@/lib/constraints/types";
 
 const daysFormatter = new Intl.NumberFormat("ro-RO", { maximumFractionDigits: 2 });
 
-/** „1 zi”, „2,5 zile”, „20 de zile” („de” doar la numere întregi de la 20 în sus). */
+/** „1 zi”, „-1 zi”, „2,5 zile”, „20 de zile” („de” doar la numere întregi de la 20 în sus). */
 export function daysText(value: number, one = "zi", many = "zile"): string {
-  if (value === 1) {
-    return `1 ${one}`;
+  if (Math.abs(value) === 1) {
+    return `${value} ${one}`;
   }
   const lastTwo = Math.abs(value) % 100;
   const needsDe = Number.isInteger(value) && value !== 0 && (lastTwo === 0 || lastTwo >= 20);
@@ -37,7 +37,7 @@ export function blackoutMonthMessage(month: number): string {
 
 /** „1 zi disponibilă”, „9 zile disponibile”, „20 de zile disponibile”. */
 export function availableDaysText(value: number): string {
-  return value === 1 ? "1 zi disponibilă" : `${daysText(value)} disponibile`;
+  return Math.abs(value) === 1 ? `${value} zi disponibilă` : `${daysText(value)} disponibile`;
 }
 
 /** Concediul neîntrerupt anual (art. 148). */

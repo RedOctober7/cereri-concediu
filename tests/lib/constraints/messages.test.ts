@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  availableDaysText,
   blackoutMonthMessage,
   daysText,
   uninterruptedVacationMessage,
@@ -15,6 +16,9 @@ describe("textele atenționărilor", () => {
     [21, "21 de zile"],
     [101, "101 zile"],
     [0, "0 zile"],
+    [-1, "-1 zi"],
+    [-2, "-2 zile"],
+    [-20, "-20 de zile"],
   ])("%s → %s", (value, text) => {
     expect(daysText(value)).toBe(text);
   });
@@ -23,6 +27,12 @@ describe("textele atenționărilor", () => {
     expect(workingDaysText(1)).toBe("1 zi lucrătoare");
     expect(workingDaysText(10)).toBe("10 zile lucrătoare");
     expect(workingDaysText(20)).toBe("20 de zile lucrătoare");
+  });
+
+  it("„zi disponibilă” la singular, și pentru -1", () => {
+    expect(availableDaysText(1)).toBe("1 zi disponibilă");
+    expect(availableDaysText(-1)).toBe("-1 zi disponibilă");
+    expect(availableDaysText(-3)).toBe("-3 zile disponibile");
   });
 
   it("luna restricționată e scrisă cu literă mică în propoziție", () => {

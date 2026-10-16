@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monthsToAccrue, type AccrualMonth } from "@/lib/leaves/accrual";
+import { inactivePeriods, monthsToAccrue, type AccrualMonth } from "@/lib/leaves/accrual";
 
 const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
@@ -69,15 +69,101 @@ describe("monthsToAccrue", () => {
   });
 
   it("un cont reactivat nu primește lunile în care a fost dezactivat", () => {
-    // Acumulat ianuarie–februarie, dezactivat în martie, reactivat pe 20 septembrie.
-    const reactivatedAt = new Date("2026-09-20T09:00:00Z");
+    // Acumulat ianuarie–februarie, dezactivat pe 10 martie, reactivat pe 20 septembrie.
+    const inactive = inactivePeriods([
+      { at: new Date("2026-03-10T09:00:00Z"), active: false },
+      { at: new Date("2026-09-20T09:00:00Z"), active: true },
+    ]);
     expect(
-      monthsToAccrue({ ...veteran, accrued: months(2026, 1, 2), reactivatedAt, now: new Date("2026-10-01T02:00:00Z") })
+      monthsToAccrue({ ...veteran, accrued: months(2026, 1, 2), inactive, now: new Date("2026-10-01T02:00:00Z") })
     ).toEqual([{ year: 2026, month: 9 }]);
-    // Cont creat în 2025, niciodată acumulat, reactivat în octombrie 2026.
+    // Cont creat inactiv în 2025, niciodată acumulat, activat în octombrie 2026.
     const old = { hireDate: day("2020-03-01"), createdAt: new Date("2025-02-20T09:00:00Z") };
     expect(
-      monthsToAccrue({ ...old, accrued: [], reactivatedAt: new Date("2026-10-05T09:00:00Z"), now: new Date("2026-11-01T02:00:00Z") })
+      monthsToAccrue({
+        ...old,
+        accrued: [],
+        inactive: inactivePeriods([{ at: new Date("2026-10-05T09:00:00Z"), active: true }]),
+        now: new Date("2026-11-01T02:00:00Z"),
+      })
     ).toEqual([{ year: 2026, month: 10 }]);
+  });
+
+  it("o lună ratată înainte de dezactivare se recuperează după reactivare", () => {
+    // August ratat (cron eșuat pe 1 septembrie), apoi dezactivat 10–20 septembrie.
+    const inactive = inactivePeriods([
+      { at: new Date("2026-09-10T09:00:00Z"), active: false },
+      { at: new Date("2026-09-20T09:00:00Z"), active: true },
+    ]);
+    expect(
+      monthsToAccrue({ ...veteran, accrued: [...months(2025, 1, 12), ...months(2026, 1, 7)], inactive, now: new Date("2026-10-01T02:00:00Z") })
+    ).toEqual([
+      { year: 2026, month: 8 },
+      { year: 2026, month: 9 },
+    ]);
+  });
+
+  it("sare doar lunile la a căror încheiere contul era dezactivat", () => {
+    // Iunie ratat; dezactivat pe 15 iulie, reactivat pe 20 septembrie.
+    const inactive = inactivePeriods([
+      { at: new Date("2026-07-15T09:00:00Z"), active: false },
+      { at: new Date("2026-09-20T09:00:00Z"), active: true },
+    ]);
+    expect(
+      monthsToAccrue({ ...veteran, accrued: [...months(2025, 1, 12), ...months(2026, 1, 5)], inactive, now: new Date("2026-10-01T02:00:00Z") })
+    ).toEqual([
+      { year: 2026, month: 6 },
+      { year: 2026, month: 9 },
+    ]);
+    // Dezactivat pe 31 august la 23:30 în România (20:30 UTC): pe 1 septembrie contul era inactiv.
+    const lateAugust = inactivePeriods([
+      { at: new Date("2026-08-31T20:30:00Z"), active: false },
+      { at: new Date("2026-09-02T09:00:00Z"), active: true },
+    ]);
+    expect(
+      monthsToAccrue({ ...veteran, accrued: [...months(2025, 1, 12), ...months(2026, 1, 7)], inactive: lateAugust, now: new Date("2026-10-01T02:00:00Z") })
+    ).toEqual([{ year: 2026, month: 9 }]);
+  });
+});
+
+describe("inactivePeriods", () => {
+  const at = (iso: string) => new Date(iso);
+
+  it("perechi dezactivare → reactivare, în ordinea din timp", () => {
+    expect(
+      inactivePeriods([
+        { at: at("2026-09-20T09:00:00Z"), active: true },
+        { at: at("2026-03-10T09:00:00Z"), active: false },
+        { at: at("2026-05-01T09:00:00Z"), active: true },
+        { at: at("2026-07-01T09:00:00Z"), active: false },
+      ])
+    ).toEqual([
+      { from: at("2026-03-10T09:00:00Z"), to: at("2026-05-01T09:00:00Z") },
+      { from: at("2026-07-01T09:00:00Z"), to: at("2026-09-20T09:00:00Z") },
+    ]);
+  });
+
+  it("lipsește dezactivarea dintre două reactivări: perioada începe de la reactivarea precedentă", () => {
+    expect(
+      inactivePeriods([
+        { at: at("2026-03-10T09:00:00Z"), active: false },
+        { at: at("2026-05-01T09:00:00Z"), active: true },
+        { at: at("2026-09-20T09:00:00Z"), active: true },
+      ])
+    ).toEqual([
+      { from: at("2026-03-10T09:00:00Z"), to: at("2026-05-01T09:00:00Z") },
+      { from: at("2026-05-01T09:00:00Z"), to: at("2026-09-20T09:00:00Z") },
+    ]);
+  });
+
+  it("o reactivare fără dezactivare înainte acoperă tot de la creare", () => {
+    expect(inactivePeriods([{ at: at("2026-10-05T09:00:00Z"), active: true }])).toEqual([
+      { from: null, to: at("2026-10-05T09:00:00Z") },
+    ]);
+  });
+
+  it("o dezactivare fără reactivare se ignoră (contul e activ acum)", () => {
+    expect(inactivePeriods([{ at: at("2026-03-10T09:00:00Z"), active: false }])).toEqual([]);
+    expect(inactivePeriods([])).toEqual([]);
   });
 });

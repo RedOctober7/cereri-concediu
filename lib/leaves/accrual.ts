@@ -1,4 +1,4 @@
-import { toZonedTime } from "date-fns-tz";
+import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import { APP_TIME_ZONE, todayInBucharest, utcDate } from "@/lib/dates";
 import { nextExpiringYear } from "@/lib/leaves/rollover";
 
@@ -16,10 +16,44 @@ function fromIndex(index: number): AccrualMonth {
   return { year: Math.floor(index / 12), month: (index % 12) + 1 };
 }
 
-/** Luna (ora României) a unui moment (crearea contului, reactivarea). */
+/** Luna (ora României) în care a fost creat contul. */
 function creationMonth(createdAt: Date): AccrualMonth {
   const local = toZonedTime(createdAt, APP_TIME_ZONE);
   return { year: local.getFullYear(), month: local.getMonth() + 1 };
+}
+
+/** Perioadă în care contul a fost dezactivat; `from` null: de la creare (sau necunoscut). */
+export type InactivePeriod = { from: Date | null; to: Date };
+
+/** O schimbare de stare a contului, din jurnal (UPDATE_USER cu changes.active). */
+export type ActiveChange = { at: Date; active: boolean };
+
+/**
+ * Perioadele în care un cont acum activ a fost dezactivat, din schimbările de stare.
+ * O reactivare fără dezactivare înainte (cont creat inactiv sau rând lipsă din jurnal)
+ * acoperă tot de la schimbarea precedentă sau, dacă nu există, de la creare. O
+ * dezactivare rămasă fără reactivare se ignoră: contul e activ acum, deci a fost
+ * reactivat, dar fără data reactivării nu știm ce luni să sărim.
+ */
+export function inactivePeriods(changes: ActiveChange[]): InactivePeriod[] {
+  const periods: InactivePeriod[] = [];
+  let open: Date | undefined;
+  let previous: Date | null = null;
+  for (const change of [...changes].sort((a, b) => a.at.getTime() - b.at.getTime())) {
+    if (!change.active) {
+      open ??= change.at;
+    } else {
+      periods.push({ from: open ?? previous, to: change.at });
+      open = undefined;
+    }
+    previous = change.at;
+  }
+  return periods;
+}
+
+/** Începutul lunii (ora României), ca moment: de atunci rulează cronul pentru luna dinainte. */
+function monthStart({ year, month }: AccrualMonth): Date {
+  return fromZonedTime(`${year}-${String(month).padStart(2, "0")}-01T00:00:00`, APP_TIME_ZONE);
 }
 
 /**
@@ -29,15 +63,15 @@ function creationMonth(createdAt: Date): AccrualMonth {
  * de la prima lună deja acumulată sau, dacă nu are niciuna, de la luna în care a fost
  * creat contul (soldul inițial acoperă lunile de dinainte), până la luna trecută.
  * O lună contează dacă angajatul a fost angajat înainte de 15 ale lunii. Lunile din ani
- * ale căror zile au expirat deja nu se mai adaugă (ar expira imediat). Un cont reactivat
- * nu primește lunile în care a fost dezactivat: recuperarea începe cel mai devreme cu
- * luna ultimei reactivări (`reactivatedAt`), ca înainte, când cronul sărea conturile inactive.
+ * ale căror zile au expirat deja nu se mai adaugă (ar expira imediat). O lună nu se
+ * acumulează dacă la începutul lunii următoare, când rulează cronul, contul era
+ * dezactivat (`inactive`), ca înainte, când cronul sărea conturile inactive.
  */
 export function monthsToAccrue({
   hireDate,
   createdAt,
   accrued,
-  reactivatedAt,
+  inactive = [],
   now,
 }: {
   /** `@db.Date`, miezul nopții UTC. */
@@ -45,21 +79,22 @@ export function monthsToAccrue({
   createdAt: Date;
   /** Lunile care au deja rând LeaveAccrual. */
   accrued: AccrualMonth[];
-  /** Ultima reactivare a contului, dacă a fost dezactivat vreodată. */
-  reactivatedAt?: Date | null;
+  /** Perioadele în care contul a fost dezactivat (vezi `inactivePeriods`). */
+  inactive?: InactivePeriod[];
   now: Date;
 }): AccrualMonth[] {
   const today = todayInBucharest(now);
   const lastMonth = monthIndex({ year: today.getUTCFullYear(), month: today.getUTCMonth() + 1 }) - 1;
   const done = new Set(accrued.map(monthIndex));
-  const firstMonth = done.size > 0 ? Math.min(...done) : monthIndex(creationMonth(createdAt));
-  const start = reactivatedAt ? Math.max(firstMonth, monthIndex(creationMonth(reactivatedAt))) : firstMonth;
+  const start = done.size > 0 ? Math.min(...done) : monthIndex(creationMonth(createdAt));
   const oldestYear = nextExpiringYear(now);
+  const wasInactive = (moment: Date) =>
+    inactive.some((period) => (period.from === null || period.from <= moment) && moment < period.to);
 
   const months: AccrualMonth[] = [];
   for (let index = start; index <= lastMonth; index++) {
     const month = fromIndex(index);
-    if (month.year < oldestYear || done.has(index)) {
+    if (month.year < oldestYear || done.has(index) || wasInactive(monthStart(fromIndex(index + 1)))) {
       continue;
     }
     // hireDate este `@db.Date`: comparăm cu ziua de 15 la miezul nopții UTC.
