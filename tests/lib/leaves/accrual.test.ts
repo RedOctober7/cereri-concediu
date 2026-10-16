@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inactivePeriods, monthsToAccrue, type AccrualMonth } from "@/lib/leaves/accrual";
+import { inactivePeriods, monthsToAccrue, parseActiveChange, type AccrualMonth } from "@/lib/leaves/accrual";
 
 const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
@@ -165,5 +165,66 @@ describe("inactivePeriods", () => {
   it("o dezactivare fără reactivare se ignoră (contul e activ acum)", () => {
     expect(inactivePeriods([{ at: at("2026-03-10T09:00:00Z"), active: false }])).toEqual([]);
     expect(inactivePeriods([])).toEqual([]);
+  });
+
+  it("rânduri vechi (active direct în details): o activare fără dezactivare înainte nu e o perioadă", () => {
+    expect(
+      inactivePeriods([
+        { at: at("2026-07-10T09:00:00Z"), active: false, legacy: true },
+        { at: at("2026-08-20T09:00:00Z"), active: true, legacy: true },
+        { at: at("2026-09-01T09:00:00Z"), active: true, legacy: true },
+        { at: at("2026-10-20T09:00:00Z"), active: false },
+        { at: at("2026-10-20T09:01:00Z"), active: true },
+      ])
+    ).toEqual([
+      { from: at("2026-07-10T09:00:00Z"), to: at("2026-08-20T09:00:00Z") },
+      { from: at("2026-10-20T09:00:00Z"), to: at("2026-10-20T09:01:00Z") },
+    ]);
+  });
+});
+
+describe("parseActiveChange", () => {
+  const when = new Date("2026-10-20T09:00:00Z");
+
+  it("citește changes.active.to", () => {
+    expect(parseActiveChange({ changes: { active: { from: true, to: false } } }, when)).toEqual({ at: when, active: false });
+    expect(parseActiveChange({ changes: { active: { from: false, to: true } } }, when)).toEqual({ at: when, active: true });
+  });
+
+  it("citește și rândurile vechi, cu active direct în details", () => {
+    expect(parseActiveChange({ active: false }, when)).toEqual({ at: when, active: false, legacy: true });
+    expect(parseActiveChange({ firstName: "Ana", active: true }, when)).toEqual({ at: when, active: true, legacy: true });
+  });
+
+  it("ignoră rândurile care nu ating starea contului", () => {
+    expect(parseActiveChange({ changes: { firstName: { from: "Ana", to: "Ama" } } }, when)).toBeNull();
+    expect(parseActiveChange({ changes: { firstName: { from: "Ana", to: "Ama" } }, active: true }, when)).toBeNull();
+    expect(parseActiveChange({ passwordReset: true }, when)).toBeNull();
+    expect(parseActiveChange({ changes: { active: { from: true, to: "nu" } } }, when)).toBeNull();
+    expect(parseActiveChange(null, when)).toBeNull();
+    expect(parseActiveChange([{ active: false }], when)).toBeNull();
+  });
+});
+
+describe("acumularea cu rânduri vechi în jurnal", () => {
+  it("lunile acoperite de o dezactivare veche nu se adaugă după o reactivare nouă", () => {
+    // Cont creat în iunie 2026, iunie acumulat. Dezactivat 10 iulie – 20 august (rânduri
+    // vechi), apoi dezactivat și reactivat din nou pe 20 octombrie (rânduri noi).
+    const account = { hireDate: day("2020-03-01"), createdAt: new Date("2026-06-05T09:00:00Z") };
+    const inactive = inactivePeriods(
+      [
+        parseActiveChange({ active: false }, new Date("2026-07-10T09:00:00Z")),
+        parseActiveChange({ active: true }, new Date("2026-08-20T09:00:00Z")),
+        parseActiveChange({ changes: { active: { from: true, to: false } } }, new Date("2026-10-20T09:00:00Z")),
+        parseActiveChange({ changes: { active: { from: false, to: true } } }, new Date("2026-10-20T09:01:00Z")),
+      ].filter((change) => change !== null)
+    );
+    expect(
+      monthsToAccrue({ ...account, accrued: months(2026, 6, 6), inactive, now: new Date("2026-11-01T02:00:00Z") })
+    ).toEqual([
+      { year: 2026, month: 8 },
+      { year: 2026, month: 9 },
+      { year: 2026, month: 10 },
+    ]);
   });
 });

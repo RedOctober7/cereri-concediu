@@ -7,26 +7,13 @@ import {
   MONTHLY_ACCRUAL_DAYS,
   inactivePeriods,
   monthsToAccrue,
+  parseActiveChange,
   type AccrualMonth,
   type ActiveChange,
 } from '@/lib/leaves/accrual';
 
 // Un angajat înseamnă câteva interogări; lăsăm timp pentru firme mai mari.
 export const maxDuration = 300;
-
-/** Starea nouă a contului dintr-un rând UPDATE_USER (changes.active.to), dacă s-a schimbat. */
-function activeAfter(details: unknown): boolean | null {
-  if (typeof details !== 'object' || details === null || Array.isArray(details)) {
-    return null;
-  }
-  const changes = (details as { changes?: unknown }).changes;
-  if (typeof changes !== 'object' || changes === null) {
-    return null;
-  }
-  const active = (changes as { active?: unknown }).active;
-  const to = typeof active === 'object' && active !== null ? (active as { to?: unknown }).to : undefined;
-  return typeof to === 'boolean' ? to : null;
-}
 
 // LeaveAccrual are @@unique([userId, month, year]): P2002 înseamnă că luna a fost deja acumulată.
 function isAlreadyAccrued(error: unknown): boolean {
@@ -53,8 +40,8 @@ export async function GET(req: NextRequest) {
       where: { userId: { in: userIds } },
       select: { userId: true, year: true, month: true },
     }),
-    // Dezactivările și reactivările (UPDATE_USER cu changes.active): lunile în care
-    // contul era dezactivat nu se recuperează.
+    // Dezactivările și reactivările (UPDATE_USER, vezi parseActiveChange): lunile în
+    // care contul era dezactivat nu se recuperează.
     prisma.auditLog.findMany({
       where: { action: 'UPDATE_USER', entityType: 'User', entityId: { in: userIds } },
       select: { entityId: true, details: true, createdAt: true },
@@ -62,10 +49,10 @@ export async function GET(req: NextRequest) {
   ]);
   const activeChangesByUser = new Map<string, ActiveChange[]>();
   for (const log of updateLogs) {
-    const active = activeAfter(log.details);
-    if (log.entityId && active !== null) {
+    const change = parseActiveChange(log.details, log.createdAt);
+    if (log.entityId && change) {
       const list = activeChangesByUser.get(log.entityId) ?? [];
-      list.push({ at: log.createdAt, active });
+      list.push(change);
       activeChangesByUser.set(log.entityId, list);
     }
   }
