@@ -37,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDays, formatPeriod, pluralRo } from "./cereri/format";
+import { formatPeriod, pluralRo } from "./cereri/format";
 import { NO_WORK_POINT } from "./cereri/query";
 
 /** Sub acest sold (zile disponibile) angajatul apare la „Sold redus”. */
@@ -240,7 +240,7 @@ async function ExpiringDaysCard() {
                 detail={row.workPoint?.name ?? "Fără punct de lucru"}
                 aside={
                   <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                    {formatDays(row.days)} {row.days === 1 ? "zi" : "zile"}
+                    {pluralRo(row.days, "zi", "zile")}
                   </Badge>
                 }
               />
@@ -249,7 +249,7 @@ async function ExpiringDaysCard() {
         )}
         {rows.length > shown.length ? (
           <p className="pt-2 text-xs text-muted-foreground">
-            Încă {pluralRo(rows.length - shown.length, "angajat", "angajați")}. În total {formatDays(totalDays)} zile.
+            Încă {pluralRo(rows.length - shown.length, "angajat", "angajați")}. În total {pluralRo(totalDays, "zi", "zile")}.
           </p>
         ) : null}
       </CardContent>
@@ -527,8 +527,7 @@ async function DashboardContent() {
                     detail={user.workPoint?.name ?? "Fără punct de lucru"}
                     aside={
                       <Badge variant={user.availableDays < 0 ? "destructive" : "secondary"}>
-                        {formatDays(user.availableDays)}{" "}
-                        {Math.abs(user.availableDays) === 1 ? "zi" : "zile"}
+                        {pluralRo(user.availableDays, "zi", "zile")}
                       </Badge>
                     }
                   />

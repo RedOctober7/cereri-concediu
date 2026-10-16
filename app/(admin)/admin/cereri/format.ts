@@ -40,12 +40,5 @@ export function formatDays(value: number): string {
   return new Intl.NumberFormat("ro-RO", { maximumFractionDigits: 2 }).format(value);
 }
 
-/** „1 zi”, „5 zile”, „20 de zile” (în română „de” apare de la 20 în sus). */
-export function pluralRo(count: number, one: string, many: string): string {
-  if (count === 1) {
-    return `1 ${one}`;
-  }
-  const lastTwo = Math.abs(count) % 100;
-  const needsDe = count !== 0 && (lastTwo === 0 || lastTwo >= 20);
-  return `${count} ${needsDe ? "de " : ""}${many}`;
-}
+/** „1 zi”, „2,5 zile”, „20 de zile”: aceeași regulă ca în restul paginilor de admin. */
+export { pluralRo } from "@/components/admin/format";

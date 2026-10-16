@@ -35,8 +35,13 @@ export function blackoutMonthMessage(month: number): string {
   return `Luna ${monthName(month).toLowerCase()} este perioadă restricționată`;
 }
 
-/** Concediul neîntrerupt anual (art. 148): „ar rămâne 1 zi disponibilă”, „9 zile disponibile”. */
+/** „1 zi disponibilă”, „9 zile disponibile”, „20 de zile disponibile”. */
+export function availableDaysText(value: number): string {
+  return value === 1 ? "1 zi disponibilă" : `${daysText(value)} disponibile`;
+}
+
+/** Concediul neîntrerupt anual (art. 148). */
 export function uninterruptedVacationMessage(year: number, minDays: number, after: number): string {
-  const remaining = after === 1 ? "1 zi disponibilă" : `${daysText(after)} disponibile`;
+  const remaining = availableDaysText(after);
   return `În ${year} nu există încă un concediu neîntrerupt de cel puțin ${workingDaysText(minDays)}, iar după această cerere ar rămâne ${remaining} (Codul muncii, art. 148)`;
 }

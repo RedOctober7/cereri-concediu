@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { DaysValue, FormField } from "@/components/admin/admin-ui";
-import { formatDays, pluralRo } from "@/components/admin/format";
+import { daysUnit, pluralRo } from "@/components/admin/format";
 import { apiRequest, fieldErrorsFrom, omitKey, parseDecimal } from "@/components/admin/form-utils";
 import { balanceAdjustmentSchema } from "@/lib/validators";
 import { adjustmentYears } from "@/lib/leaves/rollover";
@@ -110,7 +110,7 @@ export function BalanceAdjustmentDialog({
 
     const sign = result.data.delta > 0 ? "+" : "-";
     toast.success(
-      `Sold ajustat cu ${sign}${pluralRo(Math.abs(result.data.delta), "zi", "zile")}. Sold nou: ${formatDays(result.data.after)} zile.`
+      `Sold ajustat cu ${sign}${pluralRo(Math.abs(result.data.delta), "zi", "zile")}. Sold nou: ${pluralRo(result.data.after, "zi", "zile")}.`
     );
     onOpenChange(false);
     router.refresh();
@@ -259,7 +259,7 @@ export function BalanceAdjustmentDialog({
               ) : (
                 <DaysValue value={preview} className="font-semibold" />
               )}
-              <span className="text-muted-foreground">zile</span>
+              <span className="text-muted-foreground">{daysUnit(preview ?? availableDays)}</span>
             </span>
           </div>
 

@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
-import { pluralRo } from "@/components/admin/format";
-import { ro } from "date-fns/locale";
+import { formatDay, pluralRo } from "@/components/admin/format";
+import { errorMessage, readApiJson } from "@/components/forms/api-json";
 import type { LeaveRequest, LeaveStatus } from "@prisma/client";
 import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -91,16 +90,14 @@ export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
     setCancellingId(id);
     try {
       const res = await fetch(`/api/leaves/${id}/cancel`, { method: "POST" });
-      const body = (await res.json()) as { error?: string };
+      const body = await readApiJson<{ error?: string }>(res);
       if (!res.ok) {
         throw new Error(body.error ?? "Nu s-a putut anula cererea.");
       }
       toast.success("Cererea a fost anulată.");
       router.refresh();
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "A apărut o eroare."
-      );
+      toast.error(errorMessage(error, "A apărut o eroare."));
     } finally {
       setCancellingId(null);
     }
@@ -134,8 +131,8 @@ export function MyLeavesList({ leaves }: { leaves: LeaveRequest[] }) {
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-medium">
-                  {format(leave.startDate, "dd.MM.yyyy", { locale: ro })} –{" "}
-                  {format(leave.endDate, "dd.MM.yyyy", { locale: ro })}
+                  {/* Zile la miezul nopții UTC: formatate în UTC, ca pe server și în PDF. */}
+                  {formatDay(new Date(leave.startDate))} – {formatDay(new Date(leave.endDate))}
                 </p>
                 <Badge
                   className={leaveStatusClassName(leave.status as LeaveStatus)}

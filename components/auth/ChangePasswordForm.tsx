@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { errorMessage, readApiJson } from "@/components/forms/api-json";
 import {
   changePasswordSchema,
   type ChangePasswordInput,
@@ -40,7 +41,7 @@ export function ChangePasswordForm() {
         body: JSON.stringify(data),
       });
 
-      const body = (await res.json()) as { error?: string };
+      const body = await readApiJson<{ error?: string }>(res);
 
       if (!res.ok) {
         toast.error(body.error ?? "Nu am putut schimba parola.");
@@ -56,9 +57,12 @@ export function ChangePasswordForm() {
       await signOut({ callbackUrl: "/login", redirect: false });
       router.replace("/login");
       router.refresh();
-    } catch {
+    } catch (error) {
       toast.error(
-        "A apărut o eroare. Reîncearcă în câteva momente sau contactează un administrator."
+        errorMessage(
+          error,
+          "A apărut o eroare. Reîncearcă în câteva momente sau contactează un administrator."
+        )
       );
     } finally {
       setIsLoading(false);

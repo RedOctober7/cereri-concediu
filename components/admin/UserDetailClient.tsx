@@ -42,6 +42,7 @@ import { BalanceAdjustmentDialog } from "@/components/admin/BalanceAdjustmentDia
 import { PasswordResetDialog } from "@/components/admin/PasswordResetDialog";
 import { UserEditForm } from "@/components/admin/UserEditForm";
 import {
+  daysUnit,
   formatDays,
   formatMonthYear,
   formatPeriod,
@@ -244,7 +245,7 @@ function AccrualHistory({ accruals }: { accruals: AccrualRow[] }) {
                     <span className="font-medium text-foreground tabular-nums">
                       {formatDays(total)}
                     </span>{" "}
-                    zile
+                    {daysUnit(total)}
                   </span>
                 </summary>
                 <ul className="px-4 pb-3">
@@ -301,7 +302,7 @@ function AdjustmentHistory({
                     adjustment.delta < 0 && "text-destructive"
                   )}
                 >
-                  {signedDays(adjustment.delta)} {Math.abs(adjustment.delta) === 1 ? "zi" : "zile"}
+                  {signedDays(adjustment.delta)} {daysUnit(adjustment.delta)}
                   <span className="font-normal text-muted-foreground"> din {adjustment.year}</span>
                 </span>
                 <span className="text-xs text-muted-foreground tabular-nums">

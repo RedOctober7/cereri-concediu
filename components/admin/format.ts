@@ -60,6 +60,18 @@ export function pluralRo(count: number, one: string, many: string): string {
   return `${formatDays(count)} ${needsDe ? "de " : ""}${many}`;
 }
 
+/**
+ * Unitatea scrisă după un număr de zile afișat separat (ex. într-un element cu stil
+ * propriu): „zi”, „zile” sau „de zile” („21 de zile”, dar „2,5 zile”).
+ */
+export function daysUnit(value: number): string {
+  if (Math.abs(value) === 1) {
+    return "zi";
+  }
+  const lastTwo = Math.abs(value) % 100;
+  return Number.isInteger(value) && value !== 0 && (lastTwo === 0 || lastTwo >= 20) ? "de zile" : "zile";
+}
+
 /** Elimină diacriticele și majusculele, pentru căutare („Ștefan” găsește „stefan”). */
 export function normalizeSearch(value: string): string {
   return value

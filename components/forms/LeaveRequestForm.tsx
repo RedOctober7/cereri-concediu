@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { errorMessage, readApiJson } from "@/components/forms/api-json";
 import type { ColleagueAbsenceView } from "@/lib/leaves/colleague-absences";
 
 type ValidationPreview = {
@@ -81,10 +82,10 @@ export function LeaveRequestForm({
         const res = await fetch(`/api/leaves/validate?${params}`, {
           signal: controller.signal,
         });
-        const body = (await res.json()) as {
+        const body = await readApiJson<{
           data?: ValidationPreview;
           error?: string;
-        };
+        }>(res);
         if (controller.signal.aborted) {
           return;
         }
@@ -143,18 +144,17 @@ export function LeaveRequestForm({
           endDate: format(range.to, "yyyy-MM-dd"),
         }),
       });
-      const body = (await res.json()) as { error?: string; message?: string };
+      const body = await readApiJson<{ error?: string; message?: string }>(res);
       if (!res.ok) {
         throw new Error(body.error ?? "Nu s-a putut trimite cererea.");
       }
       toast.success(body.message ?? "Cererea a fost trimisă.");
+      // Butonul rămâne dezactivat până se deschide „Cererile mele”: un al doilea clic
+      // ar primi „Ai deja o cerere...” imediat după confirmare.
       router.push("/cereri");
       router.refresh();
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "A apărut o eroare."
-      );
-    } finally {
+      toast.error(errorMessage(error, "A apărut o eroare."));
       setSubmitting(false);
     }
   }

@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 
 export default function GlobalError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  // `retry` reîncarcă datele de pe server; `reset` ar randa din nou aceeași eroare.
+  retry: () => void;
 }) {
   useEffect(() => {
     console.error("[App] Eroare:", error);
@@ -21,7 +22,7 @@ export default function GlobalError({
         A apărut o eroare neașteptată. Reîncearcă sau contactează un
         administrator dacă problema persistă.
       </p>
-      <Button onClick={() => reset()}>Reîncearcă</Button>
+      <Button onClick={() => retry()}>Reîncearcă</Button>
     </div>
   );
 }
