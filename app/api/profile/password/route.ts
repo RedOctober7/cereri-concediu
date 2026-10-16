@@ -5,6 +5,7 @@ import { DEMO_PROTECTED_MESSAGE, isProtectedDemoAccount } from "@/lib/demo/accou
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { changePasswordSchema } from "@/lib/validators";
+import { startAuthAttempt } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
@@ -47,6 +48,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: DEMO_PROTECTED_MESSAGE }, { status: 403 });
     }
 
+    // Aceeași limită ca la login (5 parole greșite pe cont și IP în 15 minute, numărate
+    // împreună cu login-ul): cine are o sesiune deschisă nu poate ghici parola contului.
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      request.headers.get("x-real-ip") ??
+      "unknown";
+    const attempt = await startAuthAttempt(user.username, ip);
+    if (!attempt.allowed) {
+      return NextResponse.json(
+        { error: "Prea multe încercări cu parola greșită. Reîncearcă în 15 minute." },
+        { status: 429 }
+      );
+    }
+
     const validCurrent = await bcrypt.compare(
       currentPassword,
       user.passwordHash
@@ -59,6 +74,7 @@ export async function POST(request: Request) {
       );
     }
 
+    await attempt.succeeded();
     const passwordHash = await bcrypt.hash(newPassword, 12);
 
     await prisma.user.update({

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 import { ro } from "date-fns/locale";
 import { LeaveStatus, Prisma, Role } from "@prisma/client";
@@ -681,6 +682,11 @@ function DashboardSkeleton() {
 
 export default async function AdminDashboardPage() {
   const session = await getServerSession(authOptions);
+  // Ca pe celelalte pagini de admin: layout-ul nu se reverifică la navigarea din meniu,
+  // deci un cont dezactivat sau retrogradat între timp nu trebuie să vadă panoul.
+  if (!session || session.user.role !== "ADMIN") {
+    redirect("/login");
+  }
   const weekdayLabel = formatInTimeZone(new Date(), APP_TIME_ZONE, "EEEE, d MMMM yyyy", {
     locale: ro,
   });

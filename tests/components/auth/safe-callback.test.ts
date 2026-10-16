@@ -28,6 +28,10 @@ describe("safeCallbackPath", () => {
     ["linie nouă ascunsă", "/\n/evil.com"],
     ["javascript:", "javascript:alert(1)"],
     ["fără slash", "dashboard"],
+    ["segment „..” urmat de //", "/..//evil.com/login"],
+    ["segment „.” urmat de //", "/.//evil.com"],
+    ["segment „.” urmat de backslash", "/./\\evil.com"],
+    ["cale care urcă până la //", "/cereri/..//evil.com"],
   ])("respinge %s", (_label, raw) => {
     expect(safeCallbackPath(raw as string | null, ORIGIN)).toBeNull();
   });

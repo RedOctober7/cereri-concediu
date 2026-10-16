@@ -31,6 +31,11 @@ export const changePasswordSchema = z
   .refine((data) => data.newPassword === data.confirmPassword, {
     message: "Parolele nu coincid",
     path: ["confirmPassword"],
+  })
+  // Altfel parola temporară (știută de admin, trimisă pe email) ar rămâne parola contului.
+  .refine((data) => data.newPassword !== data.currentPassword, {
+    message: "Parola nouă trebuie să fie diferită de cea curentă",
+    path: ["newPassword"],
   });
 
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

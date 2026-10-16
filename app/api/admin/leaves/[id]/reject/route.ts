@@ -9,7 +9,8 @@ const rejectSchema = z.object({
   rejectionReason: z
     .string({ error: 'Motivul respingerii este obligatoriu.' })
     .trim()
-    .min(10, 'Motivul trebuie să aibă minim 10 caractere.'),
+    .min(10, 'Motivul trebuie să aibă minim 10 caractere.')
+    .max(1000, 'Motivul poate avea cel mult 1000 de caractere.'),
 });
 
 const NOT_PENDING_MESSAGE = 'Cererea nu mai este în așteptare.';
