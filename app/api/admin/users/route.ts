@@ -6,9 +6,7 @@ import { requireAdminSession } from "@/lib/api-auth";
 import { userCreateSchema } from "@/lib/validators";
 import { createAuditLog } from "@/lib/audit/log";
 import { findDuplicateAccount } from "./duplicates";
-import { WelcomeEmail } from "@/lib/emails/WelcomeEmail";
-import { Resend } from "resend";
-import { render } from "@react-email/render";
+import { sendWelcomeEmail } from "@/lib/emails/send";
 
 export async function GET(request: Request) {
   try {
@@ -142,27 +140,24 @@ export async function POST(request: Request) {
       },
     });
 
-    // Contul există deja; un email eșuat nu anulează crearea, dar adminul trebuie să
-    // afle că angajatul nu a primit parola. Resend întoarce eroarea în loc să arunce.
+    // Contul există deja; un email netrimis nu anulează crearea, dar adminul trebuie să
+    // afle că angajatul nu a primit parola.
     let warning: string | undefined;
     try {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      const html = await render(WelcomeEmail({
+      const result = await sendWelcomeEmail({
+        to: user.email,
         fullName: `${user.firstName} ${user.lastName}`,
         username: user.username,
         password: parsed.data.password,
-      }));
-      const { error: sendError } = await resend.emails.send({
-        from: process.env.EMAIL_FROM || 'noreply@example.ro',
-        to: user.email,
-        subject: 'Cont nou creat - Cereri Concediu',
-        html,
       });
-      if (sendError) {
-        throw new Error(sendError.message);
+      if (!result.sent) {
+        warning =
+          result.reason === "demo"
+            ? "Contul a fost creat. Pe demo emailurile nu se trimit: comunică-i angajatului numele de utilizator și parola."
+            : "Contul a fost creat, dar emailurile nu sunt configurate. Comunică-i angajatului numele de utilizator și parola.";
       }
     } catch (emailError) {
-      console.error('[Users] Eroare email:', emailError);
+      console.error("[Users] Eroare email:", emailError);
       warning =
         "Contul a fost creat, dar emailul de bun venit nu a putut fi trimis. Comunică-i angajatului numele de utilizator și parola.";
     }

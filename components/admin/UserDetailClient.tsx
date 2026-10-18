@@ -42,6 +42,7 @@ import { BalanceAdjustmentDialog } from "@/components/admin/BalanceAdjustmentDia
 import { PasswordResetDialog } from "@/components/admin/PasswordResetDialog";
 import { UserEditForm } from "@/components/admin/UserEditForm";
 import {
+  daysUnit,
   formatDays,
   formatMonthYear,
   formatPeriod,
@@ -98,6 +99,8 @@ export type BalanceAdjustmentRow = {
   delta: number;
   reason: string;
   after: number;
+  /** Anul zilelor (expiră cu acel an); null la o scădere din cele mai vechi zile. */
+  year: number | null;
   createdAt: string;
   actorName: string | null;
 };
@@ -242,7 +245,7 @@ function AccrualHistory({ accruals }: { accruals: AccrualRow[] }) {
                     <span className="font-medium text-foreground tabular-nums">
                       {formatDays(total)}
                     </span>{" "}
-                    zile
+                    {daysUnit(total)}
                   </span>
                 </summary>
                 <ul className="px-4 pb-3">
@@ -299,7 +302,10 @@ function AdjustmentHistory({
                     adjustment.delta < 0 && "text-destructive"
                   )}
                 >
-                  {signedDays(adjustment.delta)} {Math.abs(adjustment.delta) === 1 ? "zi" : "zile"}
+                  {signedDays(adjustment.delta)} {daysUnit(adjustment.delta)}
+                  <span className="font-normal text-muted-foreground">
+                    {adjustment.year !== null ? ` din ${adjustment.year}` : " din cele mai vechi zile"}
+                  </span>
                 </span>
                 <span className="text-xs text-muted-foreground tabular-nums">
                   {formatTimestamp(new Date(adjustment.createdAt))}

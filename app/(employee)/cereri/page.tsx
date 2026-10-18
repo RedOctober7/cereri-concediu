@@ -45,7 +45,8 @@ export default async function MyLeavesPage() {
         <CardHeader>
           <CardTitle>Listă cereri</CardTitle>
           <CardDescription>
-            Poți anula cererile în așteptare care nu au început încă.
+            Poți anula cererile în așteptare și concediile aprobate care nu au început încă;
+            zilele unui concediu aprobat revin în sold.
           </CardDescription>
         </CardHeader>
         <CardContent>

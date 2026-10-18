@@ -87,7 +87,7 @@ export default async function DashboardPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>Zile luate în anul curent</CardDescription>
+            <CardDescription>Zile aprobate în anul curent</CardDescription>
             <CardTitle>{formatDays(stats.takenThisYear)}</CardTitle>
           </CardHeader>
         </Card>

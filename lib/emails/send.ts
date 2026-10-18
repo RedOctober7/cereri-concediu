@@ -6,6 +6,8 @@ import { LeavePendingAdminEmail } from './LeavePendingAdminEmail';
 import { PasswordResetEmail } from './PasswordResetEmail';
 import { formatInTimeZone } from 'date-fns-tz';
 import { leavePdfFileName } from '@/lib/pdf/content';
+import { WelcomeEmail } from './WelcomeEmail';
+import { isDemoMode } from '@/lib/demo/accounts';
 
 // Clientul Resend se creează la primul email, nu la importul modulului: fără
 // RESEND_API_KEY aplicația pornește și funcționează, doar că nu trimite emailuri
@@ -48,8 +50,11 @@ export class EmailSendError extends Error {
   }
 }
 
-/** `sent: false` doar când emailurile nu sunt configurate; erorile de trimitere aruncă EmailSendError. */
-export type EmailResult = { sent: true } | { sent: false; reason: 'not_configured' };
+/**
+ * `sent: false` când emailurile nu sunt configurate sau aplicația rulează ca demo public;
+ * erorile de trimitere aruncă EmailSendError.
+ */
+export type EmailResult = { sent: true } | { sent: false; reason: 'not_configured' | 'demo' };
 
 type EmailPayload = {
   to: string | string[];
@@ -59,6 +64,12 @@ type EmailPayload = {
 };
 
 async function deliver(payload: EmailPayload): Promise<EmailResult> {
+  // Pe demo oricine intră ca admin: fără asta, demo-ul ar trimite emailuri (cu textul
+  // vizitatorului) la orice adresă, de pe domeniul firmei.
+  if (isDemoMode()) {
+    console.info(`[Email] Demo: emailurile nu se trimit („${payload.subject}”).`);
+    return { sent: false, reason: 'demo' };
+  }
   const resend = getResend();
   if (!resend) {
     console.warn(`[Email] Neconfigurat, nu se trimite: „${payload.subject}”.`);
@@ -198,6 +209,21 @@ export async function sendLeavePendingAdminEmail({
     subject: `Cerere concediu în așteptare - ${employeeFirstName} ${employeeLastName}`,
     html,
   });
+}
+
+export async function sendWelcomeEmail({
+  to,
+  fullName,
+  username,
+  password,
+}: {
+  to: string;
+  fullName: string;
+  username: string;
+  password: string;
+}): Promise<EmailResult> {
+  const html = await render(WelcomeEmail({ fullName, username, password }));
+  return deliver({ to, subject: 'Cont nou creat - Cereri Concediu', html });
 }
 
 export async function sendPasswordResetEmail({

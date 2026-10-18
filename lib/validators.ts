@@ -31,6 +31,11 @@ export const changePasswordSchema = z
   .refine((data) => data.newPassword === data.confirmPassword, {
     message: "Parolele nu coincid",
     path: ["confirmPassword"],
+  })
+  // Altfel parola temporară (știută de admin, trimisă pe email) ar rămâne parola contului.
+  .refine((data) => data.newPassword !== data.currentPassword, {
+    message: "Parola nouă trebuie să fie diferită de cea curentă",
+    path: ["newPassword"],
   });
 
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
@@ -196,6 +201,11 @@ export const balanceAdjustmentSchema = z.object({
     .min(1, "Motivul este obligatoriu")
     .min(5, "Motivul trebuie să aibă cel puțin 5 caractere")
     .max(500, "Motivul poate avea cel mult 500 de caractere"),
+  /**
+   * Anul zilelor (expiră cu acel an). La adăugare, lipsă = anul curent; la scădere,
+   * lipsă sau null = cele mai vechi zile (ca un concediu luat).
+   */
+  year: z.number({ error: "Alege anul zilelor" }).int("Alege anul zilelor").nullable().optional(),
 });
 
 export type BalanceAdjustmentInput = z.input<typeof balanceAdjustmentSchema>;

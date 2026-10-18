@@ -4,7 +4,6 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdminSession } from "@/lib/api-auth";
 import { userUpdateSchema } from "@/lib/validators";
-import { createAuditLog } from "@/lib/audit/log";
 import { DEMO_PROTECTED_MESSAGE, isProtectedDemoAccount } from "@/lib/demo/accounts";
 import { toDateOnlyString } from "@/lib/dates";
 import {
@@ -137,7 +136,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const newInitialLeaveDays = parsed.data.initialLeaveDays;
 
-    const { updated, balanceChange } = await prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx) => {
       // Soldul inițial face parte din availableDays (la creare availableDays =
       // initialLeaveDays), deci o corectură se aplică și soldului, ca diferență.
       // Blocăm rândul (ca la crearea cererilor și la rollover-ul anual) ca
@@ -222,48 +221,51 @@ export async function PATCH(request: Request, context: RouteContext) {
         },
       });
 
-      return {
-        updated,
-        balanceChange:
-          before && availableDaysDelta !== 0
-            ? {
-                initialLeaveDaysBefore: before.initialLeaveDays,
-                initialLeaveDaysAfter: updated.initialLeaveDays,
-                availableDaysBefore: before.availableDays,
-                availableDaysAfter: updated.availableDays,
-              }
-            : null,
-      };
-    });
+      const balanceChange =
+        before && availableDaysDelta !== 0
+          ? {
+              initialLeaveDaysBefore: before.initialLeaveDays,
+              initialLeaveDaysAfter: updated.initialLeaveDays,
+              availableDaysBefore: before.availableDays,
+              availableDaysAfter: updated.availableDays,
+            }
+          : null;
 
-    // Doar câmpurile care chiar s-au schimbat, ca { from, to }: jurnalul arată
-    // diferența, nu tot formularul. Parola nu ajunge niciodată în jurnal.
-    const changes: Partial<Record<ProfileField, { from: AuditValue; to: AuditValue }>> = {};
-    for (const field of PROFILE_FIELDS) {
-      const from = auditValue(existing[field]);
-      const to = auditValue(updated[field]);
-      if (parsed.data[field] !== undefined && from !== to) {
-        changes[field] = { from, to };
+      // Doar câmpurile care chiar s-au schimbat, ca { from, to }: jurnalul arată
+      // diferența, nu tot formularul. Parola nu ajunge niciodată în jurnal.
+      const changes: Partial<Record<ProfileField, { from: AuditValue; to: AuditValue }>> = {};
+      for (const field of PROFILE_FIELDS) {
+        const from = auditValue(existing[field]);
+        const to = auditValue(updated[field]);
+        if (parsed.data[field] !== undefined && from !== to) {
+          changes[field] = { from, to };
+        }
       }
-    }
 
-    const hasChanges = Object.keys(changes).length > 0;
-    if (hasChanges || passwordHash || parsed.data.forcePasswordReset !== undefined) {
-      await createAuditLog({
-        userId: auth.session.user.id,
-        action: "UPDATE_USER",
-        entityType: "User",
-        entityId: updated.id,
-        details: {
-          ...(hasChanges ? { changes } : {}),
-          ...(passwordHash ? { passwordReset: true } : {}),
-          ...(parsed.data.forcePasswordReset !== undefined
-            ? { forcePasswordReset: parsed.data.forcePasswordReset }
-            : {}),
-          ...(balanceChange ?? {}),
-        },
-      });
-    }
+      // Rândul se scrie în aceeași tranzacție: acumularea lunară află din el când a
+      // fost contul dezactivat (changes.active), deci nu poate lipsi.
+      const hasChanges = Object.keys(changes).length > 0;
+      if (hasChanges || passwordHash || parsed.data.forcePasswordReset !== undefined) {
+        await tx.auditLog.create({
+          data: {
+            userId: auth.session.user.id,
+            action: "UPDATE_USER",
+            entityType: "User",
+            entityId: updated.id,
+            details: {
+              ...(hasChanges ? { changes } : {}),
+              ...(passwordHash ? { passwordReset: true } : {}),
+              ...(parsed.data.forcePasswordReset !== undefined
+                ? { forcePasswordReset: parsed.data.forcePasswordReset }
+                : {}),
+              ...(balanceChange ?? {}),
+            },
+          },
+        });
+      }
+
+      return updated;
+    });
 
     return NextResponse.json({ data: updated });
   } catch (error) {

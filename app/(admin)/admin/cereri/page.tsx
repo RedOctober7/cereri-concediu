@@ -18,6 +18,7 @@ import {
   type StatusTab,
 } from "@/components/admin/LeavesAdmin";
 import { formatPeriod, formatTimestamp } from "./format";
+import { normalizeSearch } from "@/components/admin/format";
 import {
   NO_WORK_POINT,
   STATUS_FILTERS,
@@ -40,19 +41,23 @@ export default async function AdminCereriPage({
   const query = parseCereriQuery(await searchParams);
   const activeFilter = STATUS_FILTERS.find((filter) => filter.value === query.status)!;
 
-  // Căutare după nume: fiecare cuvânt trebuie să apară în prenume sau nume.
-  const terms = query.q.split(/\s+/).filter(Boolean).slice(0, 5);
+  // Căutare după nume: fiecare cuvânt trebuie să apară în prenume sau nume, fără să
+  // conteze diacriticele („stefan” îl găsește pe „Ștefan”), ca pe pagina de utilizatori.
+  // Postgres nu le ignoră fără extensia unaccent, așa că potrivim numele aici.
+  const terms = normalizeSearch(query.q).split(/\s+/).filter(Boolean).slice(0, 5);
+  const matchingUserIds =
+    terms.length > 0
+      ? (
+          await prisma.user.findMany({ select: { id: true, firstName: true, lastName: true } })
+        )
+          .filter((user) => {
+            const name = normalizeSearch(`${user.firstName} ${user.lastName}`);
+            return terms.every((term) => name.includes(term));
+          })
+          .map((user) => user.id)
+      : null;
   const userWhere: Prisma.UserWhereInput = {
-    ...(terms.length > 0
-      ? {
-          AND: terms.map((term) => ({
-            OR: [
-              { firstName: { contains: term, mode: "insensitive" as const } },
-              { lastName: { contains: term, mode: "insensitive" as const } },
-            ],
-          })),
-        }
-      : {}),
+    ...(matchingUserIds ? { id: { in: matchingUserIds } } : {}),
     ...(query.wp === NO_WORK_POINT
       ? { workPointId: null }
       : query.wp

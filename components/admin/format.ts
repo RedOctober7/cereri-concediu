@@ -50,14 +50,26 @@ export function formatMonthYear(month: number, year: number): string {
   });
 }
 
-/** „1 zi”, „5 zile”, „20 de zile” (în română „de” apare de la 20 în sus). */
+/** „1 zi”, „-1 zi”, „5 zile”, „20 de zile” (în română „de” apare de la 20 în sus). */
 export function pluralRo(count: number, one: string, many: string): string {
-  if (count === 1) {
-    return `1 ${one}`;
+  if (Math.abs(count) === 1) {
+    return `${count} ${one}`;
   }
   const lastTwo = Math.abs(count) % 100;
   const needsDe = Number.isInteger(count) && count !== 0 && (lastTwo === 0 || lastTwo >= 20);
   return `${formatDays(count)} ${needsDe ? "de " : ""}${many}`;
+}
+
+/**
+ * Unitatea scrisă după un număr de zile afișat separat (ex. într-un element cu stil
+ * propriu): „zi”, „zile” sau „de zile” („21 de zile”, dar „2,5 zile”).
+ */
+export function daysUnit(value: number): string {
+  if (Math.abs(value) === 1) {
+    return "zi";
+  }
+  const lastTwo = Math.abs(value) % 100;
+  return Number.isInteger(value) && value !== 0 && (lastTwo === 0 || lastTwo >= 20) ? "de zile" : "zile";
 }
 
 /** Elimină diacriticele și majusculele, pentru căutare („Ștefan” găsește „stefan”). */

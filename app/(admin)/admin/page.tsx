@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 import { ro } from "date-fns/locale";
 import { LeaveStatus, Prisma, Role } from "@prisma/client";
@@ -36,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDays, formatPeriod, pluralRo } from "./cereri/format";
+import { formatPeriod, pluralRo } from "./cereri/format";
 import { NO_WORK_POINT } from "./cereri/query";
 
 /** Sub acest sold (zile disponibile) angajatul apare la „Sold redus”. */
@@ -239,7 +240,7 @@ async function ExpiringDaysCard() {
                 detail={row.workPoint?.name ?? "Fără punct de lucru"}
                 aside={
                   <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                    {formatDays(row.days)} {row.days === 1 ? "zi" : "zile"}
+                    {pluralRo(row.days, "zi", "zile")}
                   </Badge>
                 }
               />
@@ -248,7 +249,7 @@ async function ExpiringDaysCard() {
         )}
         {rows.length > shown.length ? (
           <p className="pt-2 text-xs text-muted-foreground">
-            Încă {pluralRo(rows.length - shown.length, "angajat", "angajați")}. În total {formatDays(totalDays)} zile.
+            Încă {pluralRo(rows.length - shown.length, "angajat", "angajați")}. În total {pluralRo(totalDays, "zi", "zile")}.
           </p>
         ) : null}
       </CardContent>
@@ -526,8 +527,7 @@ async function DashboardContent() {
                     detail={user.workPoint?.name ?? "Fără punct de lucru"}
                     aside={
                       <Badge variant={user.availableDays < 0 ? "destructive" : "secondary"}>
-                        {formatDays(user.availableDays)}{" "}
-                        {Math.abs(user.availableDays) === 1 ? "zi" : "zile"}
+                        {pluralRo(user.availableDays, "zi", "zile")}
                       </Badge>
                     }
                   />
@@ -681,6 +681,11 @@ function DashboardSkeleton() {
 
 export default async function AdminDashboardPage() {
   const session = await getServerSession(authOptions);
+  // Ca pe celelalte pagini de admin: layout-ul nu se reverifică la navigarea din meniu,
+  // deci un cont dezactivat sau retrogradat între timp nu trebuie să vadă panoul.
+  if (!session || session.user.role !== "ADMIN") {
+    redirect("/login");
+  }
   const weekdayLabel = formatInTimeZone(new Date(), APP_TIME_ZONE, "EEEE, d MMMM yyyy", {
     locale: ro,
   });
